@@ -17,9 +17,9 @@ package tcp_test
 import (
 	"testing"
 
-	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/seqnum"
-	"github.com/google/netstack/tcpip/transport/tcp"
+	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/tcpip/seqnum"
+	"github.com/FlowerWrong/netstack/tcpip/transport/tcp"
 )
 
 const smss = 1500

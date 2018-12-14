@@ -270,11 +270,9 @@ func (e *endpoint) dispatch(largeV buffer.View) (bool, *tcpip.Error) {
 	e.vv.SetSize(n)
 	e.vv.TrimFront(e.hdrSize)
 
-	e.dispatcher.DeliverNetworkPacket(e, remoteLinkAddr, localLinkAddr, p, *e.vv)
+	e.dispatcher.DeliverNetworkPacket(e, remote, local, p, *e.vv)
 	// Prepare e.views for another packet: release used views.
-	for i := 0; i < used; i++ {
-		e.views[i] = nil
-	}
+	e.views[0] = nil
 	return true, nil
 }
 
