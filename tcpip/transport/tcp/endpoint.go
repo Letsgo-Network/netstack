@@ -162,11 +162,26 @@ type endpoint struct {
 	// sack holds TCP SACK related information for this endpoint.
 	sack SACKInfo
 
+	// delay enables Nagle's algorithm.
+	//
+	// delay is a boolean (0 is false) and must be accessed atomically.
+	delay uint32
+
+	// cork holds back segments until full.
+	//
+	// cork is a boolean (0 is false) and must be accessed atomically.
+	cork uint32
+
 	// The options below aren't implemented, but we remember the user
 	// settings because applications expect to be able to set/query these
 	// options.
-	noDelay   bool
 	reuseAddr bool
+
+	// slowAck holds the negated state of quick ack. It is stubbed out and
+	// does nothing.
+	//
+	// slowAck is a boolean (0 is false) and must be accessed atomically.
+	slowAck uint32
 
 	// segmentQueue is used to hand received segments to the protocol
 	// goroutine. Segments are queued as long as the queue is not full,
@@ -276,7 +291,6 @@ func newEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, waite
 		rcvBufSize:  DefaultBufferSize,
 		sndBufSize:  DefaultBufferSize,
 		sndMTU:      int(math.MaxInt32),
-		noDelay:     false,
 		reuseAddr:   true,
 		keepalive: keepalive{
 			// Linux defaults.
@@ -546,10 +560,6 @@ func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, <-c
 		return 0, nil, perr
 	}
 
-	var err *tcpip.Error
-	if p.Size() > avail {
-		err = tcpip.ErrWouldBlock
-	}
 	l := len(v)
 	s := newSegmentFromView(&e.route, e.id, v)
 
@@ -568,7 +578,7 @@ func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, <-c
 		// Let the protocol goroutine do the work.
 		e.sndWaker.Assert()
 	}
-	return uintptr(l), nil, err
+	return uintptr(l), nil, nil
 }
 
 // Peek reads data without consuming it from the endpoint.
@@ -643,16 +653,43 @@ func (e *endpoint) zeroReceiveWindow(scale uint8) bool {
 // SetSockOpt sets a socket option.
 func (e *endpoint) SetSockOpt(opt interface{}) *tcpip.Error {
 	switch v := opt.(type) {
-	case tcpip.NoDelayOption:
-		e.mu.Lock()
-		e.noDelay = v != 0
-		e.mu.Unlock()
+	case tcpip.DelayOption:
+		if v == 0 {
+			atomic.StoreUint32(&e.delay, 0)
+
+			// Handle delayed data.
+			e.sndWaker.Assert()
+		} else {
+			atomic.StoreUint32(&e.delay, 1)
+		}
+
+		return nil
+
+	case tcpip.CorkOption:
+		if v == 0 {
+			atomic.StoreUint32(&e.cork, 0)
+
+			// Handle the corked data.
+			e.sndWaker.Assert()
+		} else {
+			atomic.StoreUint32(&e.cork, 1)
+		}
+
 		return nil
 
 	case tcpip.ReuseAddressOption:
 		e.mu.Lock()
 		e.reuseAddr = v != 0
 		e.mu.Unlock()
+		return nil
+
+	case tcpip.QuickAckOption:
+		if v == 0 {
+			atomic.StoreUint32(&e.slowAck, 1)
+		} else {
+			atomic.StoreUint32(&e.slowAck, 0)
+		}
+
 		return nil
 
 	case tcpip.ReceiveBufferSizeOption:
@@ -812,13 +849,16 @@ func (e *endpoint) GetSockOpt(opt interface{}) *tcpip.Error {
 		*o = tcpip.ReceiveQueueSizeOption(v)
 		return nil
 
-	case *tcpip.NoDelayOption:
-		e.mu.RLock()
-		v := e.noDelay
-		e.mu.RUnlock()
-
+	case *tcpip.DelayOption:
 		*o = 0
-		if v {
+		if v := atomic.LoadUint32(&e.delay); v != 0 {
+			*o = 1
+		}
+		return nil
+
+	case *tcpip.CorkOption:
+		*o = 0
+		if v := atomic.LoadUint32(&e.cork); v != 0 {
 			*o = 1
 		}
 		return nil
@@ -831,6 +871,13 @@ func (e *endpoint) GetSockOpt(opt interface{}) *tcpip.Error {
 		*o = 0
 		if v {
 			*o = 1
+		}
+		return nil
+
+	case *tcpip.QuickAckOption:
+		*o = 1
+		if v := atomic.LoadUint32(&e.slowAck); v != 0 {
+			*o = 0
 		}
 		return nil
 

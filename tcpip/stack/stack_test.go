@@ -18,12 +18,15 @@
 package stack_test
 
 import (
+	"bytes"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
 
 	"github.com/FlowerWrong/netstack/tcpip"
 	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/tcpip/header"
 	"github.com/FlowerWrong/netstack/tcpip/link/channel"
 	"github.com/FlowerWrong/netstack/tcpip/stack"
 )
@@ -641,6 +644,42 @@ func TestAddressSpoofing(t *testing.T) {
 	}
 }
 
+func TestBroadcastNeedsNoRoute(t *testing.T) {
+	s := stack.New([]string{"fakeNet"}, nil, stack.Options{})
+
+	id, _ := channel.New(10, defaultMTU, "")
+	if err := s.CreateNIC(1, id); err != nil {
+		t.Fatalf("CreateNIC failed: %v", err)
+	}
+	s.SetRouteTable([]tcpip.Route{})
+
+	// If there is no endpoint, it won't work.
+	if _, err := s.FindRoute(1, header.IPv4Any, header.IPv4Broadcast, fakeNetNumber); err != tcpip.ErrNoRoute {
+		t.Fatalf("got FindRoute(1, %v, %v, %v) = %v, want = %v", header.IPv4Any, header.IPv4Broadcast, fakeNetNumber, err, tcpip.ErrNoRoute)
+	}
+
+	if err := s.AddAddress(1, fakeNetNumber, header.IPv4Any); err != nil {
+		t.Fatalf("AddAddress(%v, %v) failed: %v", fakeNetNumber, header.IPv4Any, err)
+	}
+	r, err := s.FindRoute(1, header.IPv4Any, header.IPv4Broadcast, fakeNetNumber)
+	if err != nil {
+		t.Fatalf("FindRoute(1, %v, %v, %v) failed: %v", header.IPv4Any, header.IPv4Broadcast, fakeNetNumber, err)
+	}
+
+	if r.LocalAddress != header.IPv4Any {
+		t.Errorf("Bad local address: got %v, want = %v", r.LocalAddress, header.IPv4Any)
+	}
+
+	if r.RemoteAddress != header.IPv4Broadcast {
+		t.Errorf("Bad remote address: got %v, want = %v", r.RemoteAddress, header.IPv4Broadcast)
+	}
+
+	// If the NIC doesn't exist, it won't work.
+	if _, err := s.FindRoute(2, header.IPv4Any, header.IPv4Broadcast, fakeNetNumber); err != tcpip.ErrNoRoute {
+		t.Fatalf("got FindRoute(2, %v, %v, %v) = %v want = %v", header.IPv4Any, header.IPv4Broadcast, fakeNetNumber, err, tcpip.ErrNoRoute)
+	}
+}
+
 // Set the subnet, then check that packet is delivered.
 func TestSubnetAcceptsMatchingPacket(t *testing.T) {
 	s := stack.New([]string{"fakeNet"}, nil, stack.Options{})
@@ -787,7 +826,79 @@ func TestSubnetAddRemove(t *testing.T) {
 	}
 }
 
-func TestGetMainNICAddress(t *testing.T) {
+func TestGetMainNICAddressAddPrimaryNonPrimary(t *testing.T) {
+	for _, addrLen := range []int{4, 16} {
+		t.Run(fmt.Sprintf("addrLen=%d", addrLen), func(t *testing.T) {
+			for canBe := 0; canBe < 3; canBe++ {
+				t.Run(fmt.Sprintf("canBe=%d", canBe), func(t *testing.T) {
+					for never := 0; never < 3; never++ {
+						t.Run(fmt.Sprintf("never=%d", never), func(t *testing.T) {
+							s := stack.New([]string{"fakeNet"}, nil, stack.Options{})
+							id, _ := channel.New(10, defaultMTU, "")
+							if err := s.CreateNIC(1, id); err != nil {
+								t.Fatalf("CreateNIC failed: %v", err)
+							}
+							// Insert <canBe> primary and <never> never-primary addresses.
+							// Each one will add a network endpoint to the NIC.
+							primaryAddrAdded := make(map[tcpip.Address]tcpip.Subnet)
+							for i := 0; i < canBe+never; i++ {
+								var behavior stack.PrimaryEndpointBehavior
+								if i < canBe {
+									behavior = stack.CanBePrimaryEndpoint
+								} else {
+									behavior = stack.NeverPrimaryEndpoint
+								}
+								// Add an address and in case of a primary one also add a
+								// subnet.
+								address := tcpip.Address(bytes.Repeat([]byte{byte(i)}, addrLen))
+								if err := s.AddAddressWithOptions(1, fakeNetNumber, address, behavior); err != nil {
+									t.Fatalf("AddAddressWithOptions failed: %v", err)
+								}
+								if behavior == stack.CanBePrimaryEndpoint {
+									mask := tcpip.AddressMask(strings.Repeat("\xff", len(address)))
+									subnet, err := tcpip.NewSubnet(address, mask)
+									if err != nil {
+										t.Fatalf("NewSubnet failed: %v", err)
+									}
+									if err := s.AddSubnet(1, fakeNetNumber, subnet); err != nil {
+										t.Fatalf("AddSubnet failed: %v", err)
+									}
+									// Remember the address/subnet.
+									primaryAddrAdded[address] = subnet
+								}
+							}
+							// Check that GetMainNICAddress returns an address if at least
+							// one primary address was added. In that case make sure the
+							// address/subnet matches what we added.
+							if len(primaryAddrAdded) == 0 {
+								// No primary addresses present, expect an error.
+								if _, _, err := s.GetMainNICAddress(1, fakeNetNumber); err != tcpip.ErrNoLinkAddress {
+									t.Fatalf("got s.GetMainNICAddress(...) = %v, wanted = %v", err, tcpip.ErrNoLinkAddress)
+								}
+							} else {
+								// At least one primary address was added, expect a valid
+								// address and subnet.
+								gotAddress, gotSubnet, err := s.GetMainNICAddress(1, fakeNetNumber)
+								if err != nil {
+									t.Fatalf("GetMainNICAddress failed: %v", err)
+								}
+								expectedSubnet, ok := primaryAddrAdded[gotAddress]
+								if !ok {
+									t.Fatalf("GetMainNICAddress: got address = %v, wanted any in {%v}", gotAddress, primaryAddrAdded)
+								}
+								if gotSubnet != expectedSubnet {
+									t.Fatalf("GetMainNICAddress: got subnet = %v, wanted %v", gotSubnet, expectedSubnet)
+								}
+							}
+						})
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestGetMainNICAddressAddRemove(t *testing.T) {
 	s := stack.New([]string{"fakeNet"}, nil, stack.Options{})
 	id, _ := channel.New(10, defaultMTU, "")
 	if err := s.CreateNIC(1, id); err != nil {

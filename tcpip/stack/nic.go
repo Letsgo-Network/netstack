@@ -126,16 +126,6 @@ func (n *NIC) getMainNICAddress(protocol tcpip.NetworkProtocolNumber) (tcpip.Add
 
 	}
 
-	// If no primary endpoints then check for other endpoints.
-	if r == nil {
-		for _, ref := range n.endpoints {
-			if ref.holdsInsertRef && ref.tryIncRef() {
-				r = ref
-				break
-			}
-		}
-	}
-
 	if r == nil {
 		return "", tcpip.Subnet{}, tcpip.ErrNoLinkAddress
 	}
@@ -398,7 +388,7 @@ func (n *NIC) RemoveAddress(addr tcpip.Address) *tcpip.Error {
 // Note that the ownership of the slice backing vv is retained by the caller.
 // This rule applies only to the slice itself, not to the items of the slice;
 // the ownership of the items is not retained by the caller.
-func (n *NIC) DeliverNetworkPacket(linkEP LinkEndpoint, remoteLinkAddr, localLinkAddr tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
+func (n *NIC) DeliverNetworkPacket(linkEP LinkEndpoint, remote, _ tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
 	netProto, ok := n.stack.networkProtocols[protocol]
 	if !ok {
 		n.stack.stats.UnknownProtocolRcvdPackets.Increment()
@@ -418,7 +408,7 @@ func (n *NIC) DeliverNetworkPacket(linkEP LinkEndpoint, remoteLinkAddr, localLin
 
 	if ref := n.getRef(protocol, dst); ref != nil {
 		r := makeRoute(protocol, dst, src, linkEP.LinkAddress(), ref)
-		r.RemoteLinkAddress = remoteLinkAddr
+		r.RemoteLinkAddress = remote
 		ref.ep.HandlePacket(&r, vv)
 		ref.decRef()
 		return
@@ -437,7 +427,7 @@ func (n *NIC) DeliverNetworkPacket(linkEP LinkEndpoint, remoteLinkAddr, localLin
 		defer r.Release()
 
 		r.LocalLinkAddress = n.linkEP.LinkAddress()
-		r.RemoteLinkAddress = remoteLinkAddr
+		r.RemoteLinkAddress = remote
 
 		// Found a NIC.
 		n := r.ref.nic

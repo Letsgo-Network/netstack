@@ -244,14 +244,14 @@ func (e *endpoint) dispatch(largeV buffer.View) (bool, *tcpip.Error) {
 	}
 
 	var (
-		p                             tcpip.NetworkProtocolNumber
-		remoteLinkAddr, localLinkAddr tcpip.LinkAddress
+		p             tcpip.NetworkProtocolNumber
+		remote, local tcpip.LinkAddress
 	)
 	if e.hdrSize > 0 {
 		eth := header.Ethernet(e.views[0])
 		p = eth.Type()
-		remoteLinkAddr = eth.SourceAddress()
-		localLinkAddr = eth.DestinationAddress()
+		remote = eth.SourceAddress()
+		local = eth.DestinationAddress()
 	} else {
 		// We don't get any indication of what the packet is, so try to guess
 		// if it's an IPv4 or IPv6 packet.
@@ -271,7 +271,10 @@ func (e *endpoint) dispatch(largeV buffer.View) (bool, *tcpip.Error) {
 	e.vv.TrimFront(e.hdrSize)
 
 	e.dispatcher.DeliverNetworkPacket(e, remoteLinkAddr, localLinkAddr, p, *e.vv)
-
+	// Prepare e.views for another packet: release used views.
+	for i := 0; i < used; i++ {
+		e.views[i] = nil
+	}
 	return true, nil
 }
 
@@ -306,7 +309,7 @@ func (e *InjectableEndpoint) Attach(dispatcher stack.NetworkDispatcher) {
 
 // Inject injects an inbound packet.
 func (e *InjectableEndpoint) Inject(protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
-	e.dispatcher.DeliverNetworkPacket(e, "" /* remoteLinkAddr */, "" /* localLinkAddr */, protocol, vv)
+	e.dispatcher.DeliverNetworkPacket(e, "" /* remote */, "" /* local */, protocol, vv)
 }
 
 // NewInjectable creates a new fd-based InjectableEndpoint.
