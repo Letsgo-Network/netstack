@@ -19,10 +19,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/google/netstack/ilist"
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/ilist"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/tcpip/header"
 )
 
 // NIC represents a "network interface card" to which the networking stack is
@@ -41,6 +41,10 @@ type NIC struct {
 	primary     map[tcpip.NetworkProtocolNumber]*ilist.List
 	endpoints   map[NetworkEndpointID]*referencedNetworkEndpoint
 	subnets     []tcpip.Subnet
+
+	hooked        bool
+	hookedAddress tcpip.Address
+	hookedPort    uint16
 }
 
 // PrimaryEndpointBehavior is an enumeration of an endpoint's primacy behavior.
@@ -62,7 +66,7 @@ const (
 	NeverPrimaryEndpoint
 )
 
-func newNIC(stack *Stack, id tcpip.NICID, name string, ep LinkEndpoint) *NIC {
+func newNIC(stack *Stack, id tcpip.NICID, name string, ep LinkEndpoint, hooked bool, hookedAddress tcpip.Address, hookedPort uint16) *NIC {
 	return &NIC{
 		stack:     stack,
 		id:        id,
@@ -71,6 +75,9 @@ func newNIC(stack *Stack, id tcpip.NICID, name string, ep LinkEndpoint) *NIC {
 		demux:     newTransportDemuxer(stack),
 		primary:   make(map[tcpip.NetworkProtocolNumber]*ilist.List),
 		endpoints: make(map[NetworkEndpointID]*referencedNetworkEndpoint),
+		hooked:        hooked,
+		hookedAddress: hookedAddress,
+		hookedPort:    hookedPort,
 	}
 }
 
@@ -444,7 +451,13 @@ func (n *NIC) DeliverNetworkPacket(linkEP LinkEndpoint, remote, _ tcpip.LinkAddr
 }
 
 func (n *NIC) getRef(protocol tcpip.NetworkProtocolNumber, dst tcpip.Address) *referencedNetworkEndpoint {
-	id := NetworkEndpointID{dst}
+	// id := NetworkEndpointID{dst}
+	var id NetworkEndpointID
+	if n.hooked {
+		id = NetworkEndpointID{n.hookedAddress}
+	} else {
+		id = NetworkEndpointID{dst}
+	}
 
 	n.mu.RLock()
 	if ref, ok := n.endpoints[id]; ok && ref.tryIncRef() {
@@ -505,10 +518,10 @@ func (n *NIC) DeliverTransportPacket(r *Route, protocol tcpip.TransportProtocolN
 	}
 
 	id := TransportEndpointID{dstPort, r.LocalAddress, srcPort, r.RemoteAddress}
-	if n.demux.deliverPacket(r, protocol, vv, id) {
+	if n.demux.deliverPacket(r, protocol, vv, id, n.hookedPort) {
 		return
 	}
-	if n.stack.demux.deliverPacket(r, protocol, vv, id) {
+	if n.stack.demux.deliverPacket(r, protocol, vv, id, n.hookedPort) {
 		return
 	}
 
@@ -549,10 +562,10 @@ func (n *NIC) DeliverTransportControlPacket(local, remote tcpip.Address, net tcp
 	}
 
 	id := TransportEndpointID{srcPort, local, dstPort, remote}
-	if n.demux.deliverControlPacket(net, trans, typ, extra, vv, id) {
+	if n.demux.deliverControlPacket(net, trans, typ, extra, vv, id, n.hookedPort) {
 		return
 	}
-	if n.stack.demux.deliverControlPacket(net, trans, typ, extra, vv, id) {
+	if n.stack.demux.deliverControlPacket(net, trans, typ, extra, vv, id, n.hookedPort) {
 		return
 	}
 }

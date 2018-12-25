@@ -28,13 +28,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/netstack/sleep"
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/ports"
-	"github.com/google/netstack/tcpip/seqnum"
-	"github.com/google/netstack/waiter"
+	"github.com/FlowerWrong/netstack/sleep"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/tcpip/ports"
+	"github.com/FlowerWrong/netstack/tcpip/seqnum"
+	"github.com/FlowerWrong/netstack/waiter"
 )
 
 const (
@@ -501,7 +501,7 @@ func (s *Stack) NewEndpoint(transport tcpip.TransportProtocolNumber, network tcp
 
 // createNIC creates a NIC with the provided id and link-layer endpoint, and
 // optionally enable it.
-func (s *Stack) createNIC(id tcpip.NICID, name string, linkEP tcpip.LinkEndpointID, enabled bool) *tcpip.Error {
+func (s *Stack) createNIC(id tcpip.NICID, name string, linkEP tcpip.LinkEndpointID, enabled bool, hooked bool, hookedAddress tcpip.Address, hookedPort uint16) *tcpip.Error {
 	ep := FindLinkEndpoint(linkEP)
 	if ep == nil {
 		return tcpip.ErrBadLinkEndpoint
@@ -515,7 +515,7 @@ func (s *Stack) createNIC(id tcpip.NICID, name string, linkEP tcpip.LinkEndpoint
 		return tcpip.ErrDuplicateNICID
 	}
 
-	n := newNIC(s, id, name, ep)
+	n := newNIC(s, id, name, ep, hooked, hookedAddress, hookedPort)
 
 	s.nics[id] = n
 	if enabled {
@@ -526,27 +526,27 @@ func (s *Stack) createNIC(id tcpip.NICID, name string, linkEP tcpip.LinkEndpoint
 }
 
 // CreateNIC creates a NIC with the provided id and link-layer endpoint.
-func (s *Stack) CreateNIC(id tcpip.NICID, linkEP tcpip.LinkEndpointID) *tcpip.Error {
-	return s.createNIC(id, "", linkEP, true)
+func (s *Stack) CreateNIC(id tcpip.NICID, linkEP tcpip.LinkEndpointID, hooked bool, hookedAddress tcpip.Address, hookedPort uint16) *tcpip.Error {
+	return s.createNIC(id, "", linkEP, true, hooked, hookedAddress, hookedPort)
 }
 
 // CreateNamedNIC creates a NIC with the provided id and link-layer endpoint,
 // and a human-readable name.
-func (s *Stack) CreateNamedNIC(id tcpip.NICID, name string, linkEP tcpip.LinkEndpointID) *tcpip.Error {
-	return s.createNIC(id, name, linkEP, true)
+func (s *Stack) CreateNamedNIC(id tcpip.NICID, name string, linkEP tcpip.LinkEndpointID, hooked bool, hookedAddress tcpip.Address, hookedPort uint16) *tcpip.Error {
+	return s.createNIC(id, name, linkEP, true, hooked, hookedAddress, hookedPort)
 }
 
 // CreateDisabledNIC creates a NIC with the provided id and link-layer endpoint,
 // but leave it disable. Stack.EnableNIC must be called before the link-layer
 // endpoint starts delivering packets to it.
-func (s *Stack) CreateDisabledNIC(id tcpip.NICID, linkEP tcpip.LinkEndpointID) *tcpip.Error {
-	return s.createNIC(id, "", linkEP, false)
+func (s *Stack) CreateDisabledNIC(id tcpip.NICID, linkEP tcpip.LinkEndpointID, hooked bool, hookedAddress tcpip.Address, hookedPort uint16) *tcpip.Error {
+	return s.createNIC(id, "", linkEP, false, hooked, hookedAddress, hookedPort)
 }
 
 // CreateDisabledNamedNIC is a combination of CreateNamedNIC and
 // CreateDisabledNIC.
-func (s *Stack) CreateDisabledNamedNIC(id tcpip.NICID, name string, linkEP tcpip.LinkEndpointID) *tcpip.Error {
-	return s.createNIC(id, name, linkEP, false)
+func (s *Stack) CreateDisabledNamedNIC(id tcpip.NICID, name string, linkEP tcpip.LinkEndpointID, hooked bool, hookedAddress tcpip.Address, hookedPort uint16) *tcpip.Error {
+	return s.createNIC(id, name, linkEP, false, hooked, hookedAddress, hookedPort)
 }
 
 // EnableNIC enables the given NIC so that the link-layer endpoint can start

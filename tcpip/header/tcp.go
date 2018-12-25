@@ -18,8 +18,8 @@ import (
 	"encoding/binary"
 
 	"github.com/google/btree"
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/seqnum"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/seqnum"
 )
 
 const (

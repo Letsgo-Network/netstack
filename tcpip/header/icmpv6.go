@@ -17,7 +17,7 @@ package header
 import (
 	"encoding/binary"
 
-	"github.com/google/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip"
 )
 
 // ICMPv6 represents an ICMPv6 header stored in a byte array.

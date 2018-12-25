@@ -17,7 +17,7 @@ package tcp
 import (
 	"container/heap"
 
-	"github.com/google/netstack/tcpip/seqnum"
+	"github.com/FlowerWrong/netstack/tcpip/seqnum"
 )
 
 // receiver holds the state necessary to receive TCP segments and turn them

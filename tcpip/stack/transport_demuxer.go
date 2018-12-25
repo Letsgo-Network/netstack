@@ -17,9 +17,9 @@ package stack
 import (
 	"sync"
 
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/tcpip/header"
 )
 
 type protocolIDs struct {
@@ -100,14 +100,14 @@ func (d *transportDemuxer) unregisterEndpoint(netProtos []tcpip.NetworkProtocolN
 
 // deliverPacket attempts to deliver the given packet. Returns true if it found
 // an endpoint, false otherwise.
-func (d *transportDemuxer) deliverPacket(r *Route, protocol tcpip.TransportProtocolNumber, vv buffer.VectorisedView, id TransportEndpointID) bool {
+func (d *transportDemuxer) deliverPacket(r *Route, protocol tcpip.TransportProtocolNumber, vv buffer.VectorisedView, id TransportEndpointID, hookedPort uint16) bool {
 	eps, ok := d.protocol[protocolIDs{r.NetProto, protocol}]
 	if !ok {
 		return false
 	}
 
 	eps.mu.RLock()
-	ep := d.findEndpointLocked(eps, vv, id)
+	ep := d.findEndpointLocked(eps, vv, id, hookedPort)
 	eps.mu.RUnlock()
 
 	// Fail if we didn't find one.
@@ -127,7 +127,7 @@ func (d *transportDemuxer) deliverPacket(r *Route, protocol tcpip.TransportProto
 
 // deliverControlPacket attempts to deliver the given control packet. Returns
 // true if it found an endpoint, false otherwise.
-func (d *transportDemuxer) deliverControlPacket(net tcpip.NetworkProtocolNumber, trans tcpip.TransportProtocolNumber, typ ControlType, extra uint32, vv buffer.VectorisedView, id TransportEndpointID) bool {
+func (d *transportDemuxer) deliverControlPacket(net tcpip.NetworkProtocolNumber, trans tcpip.TransportProtocolNumber, typ ControlType, extra uint32, vv buffer.VectorisedView, id TransportEndpointID, hookedPort uint16) bool {
 	eps, ok := d.protocol[protocolIDs{net, trans}]
 	if !ok {
 		return false
@@ -135,7 +135,7 @@ func (d *transportDemuxer) deliverControlPacket(net tcpip.NetworkProtocolNumber,
 
 	// Try to find the endpoint.
 	eps.mu.RLock()
-	ep := d.findEndpointLocked(eps, vv, id)
+	ep := d.findEndpointLocked(eps, vv, id, hookedPort)
 	eps.mu.RUnlock()
 
 	// Fail if we didn't find one.
@@ -149,7 +149,7 @@ func (d *transportDemuxer) deliverControlPacket(net tcpip.NetworkProtocolNumber,
 	return true
 }
 
-func (d *transportDemuxer) findEndpointLocked(eps *transportEndpoints, vv buffer.VectorisedView, id TransportEndpointID) TransportEndpoint {
+func (d *transportDemuxer) findEndpointLocked(eps *transportEndpoints, vv buffer.VectorisedView, id TransportEndpointID, hookedPort uint16) TransportEndpoint {
 	// Try to find a match with the id as provided.
 	if ep := eps.endpoints[id]; ep != nil {
 		return ep
@@ -173,5 +173,18 @@ func (d *transportDemuxer) findEndpointLocked(eps *transportEndpoints, vv buffer
 
 	// Try to find a match with only the local port.
 	nid.LocalAddress = ""
-	return eps.endpoints[nid]
+	if ep := eps.endpoints[nid]; ep != nil {
+		return ep
+	}
+
+	// Try to find a match with hooked, just any port
+	nid.LocalAddress = ""
+	nid.RemoteAddress = ""
+	nid.RemotePort = 0
+	nid.LocalPort = hookedPort
+	if ep := eps.endpoints[nid]; ep != nil {
+		return ep
+	}
+
+	return nil
 }

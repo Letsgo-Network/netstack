@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build linux,!amd64,!arm64
+// +build linux,arm64
 
 package rawfile
 
@@ -22,6 +22,6 @@ import (
 )
 
 func blockingPoll(fds *pollEvent, nfds int, timeout int64) (int, syscall.Errno) {
-	n, _, e := syscall.Syscall(syscall.SYS_POLL, uintptr(unsafe.Pointer(fds)), uintptr(nfds), uintptr(timeout))
+	n, _, e := syscall.Syscall(syscall.SYS_PPOLL, uintptr(unsafe.Pointer(fds)), uintptr(nfds), uintptr(timeout))
 	return int(n), e
 }

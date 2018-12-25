@@ -60,7 +60,7 @@ package waiter
 import (
 	"sync"
 
-	"github.com/google/netstack/ilist"
+	"github.com/FlowerWrong/netstack/ilist"
 )
 
 // EventMask represents io events as used in the poll() syscall.

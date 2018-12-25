@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
 )
 
 // DefaultReassembleTimeout is based on the linux stack: net.ipv4.ipfrag_time.

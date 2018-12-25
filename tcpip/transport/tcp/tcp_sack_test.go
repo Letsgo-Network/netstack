@@ -19,10 +19,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/seqnum"
-	"github.com/google/netstack/tcpip/transport/tcp"
-	"github.com/google/netstack/tcpip/transport/tcp/testing/context"
+	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/tcpip/seqnum"
+	"github.com/FlowerWrong/netstack/tcpip/transport/tcp"
+	"github.com/FlowerWrong/netstack/tcpip/transport/tcp/testing/context"
 )
 
 // createConnectWithSACKPermittedOption creates and connects c.ep with the

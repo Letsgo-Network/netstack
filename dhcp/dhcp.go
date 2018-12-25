@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip"
 )
 
 // Config is standard DHCP configuration.

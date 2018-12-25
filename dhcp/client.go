@@ -21,12 +21,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/netstack/rand"
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/network/ipv4"
-	"github.com/google/netstack/tcpip/stack"
-	"github.com/google/netstack/tcpip/transport/udp"
-	"github.com/google/netstack/waiter"
+	"github.com/FlowerWrong/netstack/rand"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/network/ipv4"
+	"github.com/FlowerWrong/netstack/tcpip/stack"
+	"github.com/FlowerWrong/netstack/tcpip/transport/udp"
+	"github.com/FlowerWrong/netstack/waiter"
 )
 
 // Client is a DHCP client.

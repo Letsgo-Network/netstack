@@ -17,7 +17,7 @@ package tcp
 import (
 	"sync"
 
-	"github.com/google/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/tcpip/header"
 )
 
 // segmentQueue is a bounded, thread-safe queue of TCP segments.

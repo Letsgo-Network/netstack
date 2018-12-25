@@ -17,8 +17,8 @@
 package header
 
 import (
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
 )
 
 func calculateChecksum(buf []byte, initial uint32) uint16 {

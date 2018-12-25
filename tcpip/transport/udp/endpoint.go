@@ -18,12 +18,12 @@ import (
 	"math"
 	"sync"
 
-	"github.com/google/netstack/sleep"
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/stack"
-	"github.com/google/netstack/waiter"
+	"github.com/FlowerWrong/netstack/sleep"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/tcpip/stack"
+	"github.com/FlowerWrong/netstack/waiter"
 )
 
 // +stateify savable
@@ -98,6 +98,11 @@ type endpoint struct {
 	effectiveNetProtos []tcpip.NetworkProtocolNumber
 }
 
+
+// udp local <-> remote
+var UDPNatList sync.Map
+const defaultBufferSize = 208 * 1024
+
 type multicastMembership struct {
 	nicID         tcpip.NICID
 	multicastAddr tcpip.Address
@@ -121,8 +126,8 @@ func newEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, waite
 		//
 		// Linux defaults to TTL=1.
 		multicastTTL:  1,
-		rcvBufSizeMax: 32 * 1024,
-		sndBufSize:    32 * 1024,
+		rcvBufSizeMax: defaultBufferSize,
+		sndBufSize:    defaultBufferSize,
 	}
 }
 
@@ -872,6 +877,10 @@ func (e *endpoint) HandlePacket(r *stack.Route, id stack.TransportEndpointID, vv
 	}
 
 	wasEmpty := e.rcvBufSize == 0
+
+	if _, ok := UDPNatList.Load(id.RemotePort); !ok {
+		UDPNatList.Store(id.RemotePort, id)
+	}
 
 	// Push new packet into receive list and increment the buffer size.
 	pkt := &udpPacket{
