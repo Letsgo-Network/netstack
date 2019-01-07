@@ -251,13 +251,9 @@ func (e *endpoint) dispatch(largeV buffer.View) (bool, *tcpip.Error) {
 		remote = eth.SourceAddress()
 		local = eth.DestinationAddress()
 	} else {
-		if runtime.GOOS == "darwin" {
-			e.views[0].TrimFront(4)
-		}
-
 		// We don't get any indication of what the packet is, so try to guess
 		// if it's an IPv4 or IPv6 packet.
-		switch header.IPVersion(e.views[0]) {
+		switch header.IPVersion(e.views[0][4:]) {
 		case header.IPv4Version:
 			p = header.IPv4ProtocolNumber
 		case header.IPv6Version:
@@ -270,6 +266,10 @@ func (e *endpoint) dispatch(largeV buffer.View) (bool, *tcpip.Error) {
 	used := e.capViews(n, BufConfig)
 	vv := buffer.NewVectorisedView(n, e.views[:used])
 	vv.TrimFront(e.hdrSize)
+
+	if e.hdrSize == 0 && runtime.GOOS == "darwin" {
+		vv.TrimFront(4)
+	}
 
 	e.dispatcher.DeliverNetworkPacket(e, remote, local, p, vv)
 
