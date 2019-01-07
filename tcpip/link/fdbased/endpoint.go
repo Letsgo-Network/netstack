@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build linux
-
 // Package fdbased provides the implemention of data-link layer endpoints
 // backed by boundary-preserving file descriptors (e.g., TUN devices,
 // seqpacket/datagram sockets).
@@ -24,6 +22,7 @@
 package fdbased
 
 import (
+	"runtime"
 	"syscall"
 
 	"github.com/FlowerWrong/netstack/tcpip"
@@ -184,11 +183,23 @@ func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload b
 		eth.Encode(ethHdr)
 	}
 
-	if payload.Size() == 0 {
-		return rawfile.NonBlockingWrite(e.fd, hdr.View())
+	b1 := hdr.View()
+	if runtime.GOOS == "darwin" {
+		if e.hdrSize == 0 {
+			switch header.IPVersion(hdr.View()) {
+			case header.IPv4Version:
+				b1 = append([]byte{0, 0, 0, syscall.AF_INET}, b1...)
+			case header.IPv6Version:
+				b1 = append([]byte{0, 0, 0, syscall.AF_INET6}, b1...)
+			}
+		}
 	}
 
-	return rawfile.NonBlockingWrite2(e.fd, hdr.View(), payload.ToView())
+	if payload.Size() == 0 {
+		return rawfile.NonBlockingWrite(e.fd, b1)
+	}
+
+	return rawfile.NonBlockingWrite2(e.fd, b1, payload.ToView())
 }
 
 func (e *endpoint) capViews(n int, buffers []int) int {
@@ -240,6 +251,10 @@ func (e *endpoint) dispatch(largeV buffer.View) (bool, *tcpip.Error) {
 		remote = eth.SourceAddress()
 		local = eth.DestinationAddress()
 	} else {
+		if runtime.GOOS == "darwin" {
+			e.views[0].TrimFront(4)
+		}
+
 		// We don't get any indication of what the packet is, so try to guess
 		// if it's an IPv4 or IPv6 packet.
 		switch header.IPVersion(e.views[0]) {

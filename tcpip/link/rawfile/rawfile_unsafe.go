@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build linux
-
 // Package rawfile contains utilities for using the netstack with raw host
 // files on Linux hosts.
 package rawfile

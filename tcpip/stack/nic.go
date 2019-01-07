@@ -68,13 +68,13 @@ const (
 
 func newNIC(stack *Stack, id tcpip.NICID, name string, ep LinkEndpoint, hooked bool, hookedAddress tcpip.Address, hookedPort uint16) *NIC {
 	return &NIC{
-		stack:     stack,
-		id:        id,
-		name:      name,
-		linkEP:    ep,
-		demux:     newTransportDemuxer(stack),
-		primary:   make(map[tcpip.NetworkProtocolNumber]*ilist.List),
-		endpoints: make(map[NetworkEndpointID]*referencedNetworkEndpoint),
+		stack:         stack,
+		id:            id,
+		name:          name,
+		linkEP:        ep,
+		demux:         newTransportDemuxer(stack),
+		primary:       make(map[tcpip.NetworkProtocolNumber]*ilist.List),
+		endpoints:     make(map[NetworkEndpointID]*referencedNetworkEndpoint),
 		hooked:        hooked,
 		hookedAddress: hookedAddress,
 		hookedPort:    hookedPort,
