@@ -436,6 +436,10 @@ type CorkOption int
 // should allow reuse of local address.
 type ReuseAddressOption int
 
+// ReusePortOption is used by SetSockOpt/GetSockOpt to permit multiple sockets
+// to be bound to an identical socket address.
+type ReusePortOption int
+
 // QuickAckOption is stubbed out in SetSockOpt/GetSockOpt.
 type QuickAckOption int
 
@@ -562,6 +566,10 @@ func (s *StatCounter) Value() uint64 {
 // IncrementBy increments the counter by v.
 func (s *StatCounter) IncrementBy(v uint64) {
 	atomic.AddUint64(&s.count, v)
+}
+
+func (s *StatCounter) String() string {
+	return strconv.FormatUint(s.Value(), 10)
 }
 
 // IPStats collects IP-specific stats (both v4 and v6).

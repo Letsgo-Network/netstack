@@ -81,6 +81,7 @@ type endpoint struct {
 	dstPort      uint16
 	v6only       bool
 	multicastTTL uint8
+	reusePort    bool
 
 	// shutdownFlags represent the current shutdown state of the endpoint.
 	shutdownFlags tcpip.ShutdownFlags
@@ -137,7 +138,7 @@ func NewConnectedEndpoint(stack *stack.Stack, r *stack.Route, id stack.Transport
 	ep := newEndpoint(stack, r.NetProto, waiterQueue)
 
 	// Register new endpoint so that packets are routed to it.
-	if err := stack.RegisterTransportEndpoint(r.NICID(), []tcpip.NetworkProtocolNumber{r.NetProto}, ProtocolNumber, id, ep); err != nil {
+	if err := stack.RegisterTransportEndpoint(r.NICID(), []tcpip.NetworkProtocolNumber{r.NetProto}, ProtocolNumber, id, ep, ep.reusePort); err != nil {
 		ep.Close()
 		return nil, err
 	}
@@ -160,7 +161,7 @@ func (e *endpoint) Close() {
 
 	switch e.state {
 	case stateBound, stateConnected:
-		e.stack.UnregisterTransportEndpoint(e.regNICID, e.effectiveNetProtos, ProtocolNumber, e.id)
+		e.stack.UnregisterTransportEndpoint(e.regNICID, e.effectiveNetProtos, ProtocolNumber, e.id, e)
 		e.stack.ReleasePort(e.effectiveNetProtos, ProtocolNumber, e.id.LocalAddress, e.id.LocalPort)
 	}
 
@@ -454,6 +455,12 @@ func (e *endpoint) SetSockOpt(opt interface{}) *tcpip.Error {
 				break
 			}
 		}
+
+	case tcpip.ReusePortOption:
+		e.mu.Lock()
+		e.reusePort = v != 0
+		e.mu.Unlock()
+		return nil
 	}
 	return nil
 }
@@ -516,6 +523,17 @@ func (e *endpoint) GetSockOpt(opt interface{}) *tcpip.Error {
 		e.mu.Lock()
 		*o = tcpip.MulticastTTLOption(e.multicastTTL)
 		e.mu.Unlock()
+		return nil
+
+	case *tcpip.ReusePortOption:
+		e.mu.RLock()
+		v := e.reusePort
+		e.mu.RUnlock()
+
+		*o = 0
+		if v {
+			*o = 1
+		}
 		return nil
 
 	case *tcpip.KeepaliveEnabledOption:
@@ -653,7 +671,7 @@ func (e *endpoint) Connect(addr tcpip.FullAddress) *tcpip.Error {
 
 	// Remove the old registration.
 	if e.id.LocalPort != 0 {
-		e.stack.UnregisterTransportEndpoint(e.regNICID, e.effectiveNetProtos, ProtocolNumber, e.id)
+		e.stack.UnregisterTransportEndpoint(e.regNICID, e.effectiveNetProtos, ProtocolNumber, e.id, e)
 	}
 
 	e.id = id
@@ -716,14 +734,14 @@ func (*endpoint) Accept() (tcpip.Endpoint, *waiter.Queue, *tcpip.Error) {
 
 func (e *endpoint) registerWithStack(nicid tcpip.NICID, netProtos []tcpip.NetworkProtocolNumber, id stack.TransportEndpointID) (stack.TransportEndpointID, *tcpip.Error) {
 	if e.id.LocalPort == 0 {
-		port, err := e.stack.ReservePort(netProtos, ProtocolNumber, id.LocalAddress, id.LocalPort)
+		port, err := e.stack.ReservePort(netProtos, ProtocolNumber, id.LocalAddress, id.LocalPort, e.reusePort)
 		if err != nil {
 			return id, err
 		}
 		id.LocalPort = port
 	}
 
-	err := e.stack.RegisterTransportEndpoint(nicid, netProtos, ProtocolNumber, id, e)
+	err := e.stack.RegisterTransportEndpoint(nicid, netProtos, ProtocolNumber, id, e, e.reusePort)
 	if err != nil {
 		e.stack.ReleasePort(netProtos, ProtocolNumber, id.LocalAddress, id.LocalPort)
 	}
@@ -771,7 +789,7 @@ func (e *endpoint) bindLocked(addr tcpip.FullAddress, commit func() *tcpip.Error
 	if commit != nil {
 		if err := commit(); err != nil {
 			// Unregister, the commit failed.
-			e.stack.UnregisterTransportEndpoint(addr.NIC, netProtos, ProtocolNumber, id)
+			e.stack.UnregisterTransportEndpoint(addr.NIC, netProtos, ProtocolNumber, id, e)
 			e.stack.ReleasePort(netProtos, ProtocolNumber, id.LocalAddress, id.LocalPort)
 			return err
 		}
