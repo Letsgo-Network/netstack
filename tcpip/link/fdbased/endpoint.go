@@ -352,7 +352,11 @@ func (e *endpoint) dispatch() (bool, *tcpip.Error) {
 	} else {
 		// We don't get any indication of what the packet is, so try to guess
 		// if it's an IPv4 or IPv6 packet.
-		switch header.IPVersion(e.views[0][0][4:]) {
+		ipVersion := header.IPVersion(e.views[0][0][0:])
+		if runtime.GOOS == "darwin" {
+			ipVersion = header.IPVersion(e.views[0][0][4:])
+		}
+		switch ipVersion {
 		case header.IPv4Version:
 			p = header.IPv4ProtocolNumber
 		case header.IPv6Version:
