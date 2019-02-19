@@ -298,9 +298,6 @@ type Endpoint interface {
 	//
 	// This method does not block if there is no data pending. It will also
 	// either return an error or data, never both.
-	//
-	// A timestamp (in ns) is optionally returned. A zero value indicates
-	// that no timestamp was available.
 	Read(*FullAddress) (buffer.View, ControlMessages, *Error)
 
 	// Write writes data to the endpoint's peer. This method does not block if
@@ -326,9 +323,6 @@ type Endpoint interface {
 	// Peek reads data without consuming it from the endpoint.
 	//
 	// This method does not block if there is no data pending.
-	//
-	// A timestamp (in ns) is optionally returned. A zero value indicates
-	// that no timestamp was available.
 	Peek([][]byte) (uintptr, ControlMessages, *Error)
 
 	// Connect connects the endpoint to its peer. Specifying a NIC is
@@ -449,10 +443,6 @@ type QuickAckOption int
 // Only supported on Unix sockets.
 type PasscredOption int
 
-// TimestampOption is used by SetSockOpt/GetSockOpt to specify whether
-// SO_TIMESTAMP socket control messages are enabled.
-type TimestampOption int
-
 // TCPInfoOption is used by GetSockOpt to expose TCP statistics.
 //
 // TODO: Add and populate stat fields.
@@ -482,6 +472,13 @@ type KeepaliveCountOption int
 // MulticastTTLOption is used by SetSockOpt/GetSockOpt to control the default
 // TTL value for multicast messages. The default is 1.
 type MulticastTTLOption uint8
+
+// MulticastInterfaceOption is used by SetSockOpt/GetSockOpt to specify a
+// default interface for multicast.
+type MulticastInterfaceOption struct {
+	NIC           NICID
+	InterfaceAddr Address
+}
 
 // MembershipOption is used by SetSockOpt/GetSockOpt as an argument to
 // AddMembershipOption and RemoveMembershipOption.
