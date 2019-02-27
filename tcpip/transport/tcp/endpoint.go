@@ -116,6 +116,9 @@ type endpoint struct {
 	route             stack.Route
 	v6only            bool
 	isConnectNotified bool
+	// TCP should never broadcast but Linux nevertheless supports enabling/
+	// disabling SO_BROADCAST, albeit as a NOOP.
+	broadcast bool
 
 	// effectiveNetProtos contains the network protocols actually in use. In
 	// most cases it will only contain "netProto", but in cases like IPv6
@@ -174,6 +177,9 @@ type endpoint struct {
 	//
 	// cork is a boolean (0 is false) and must be accessed atomically.
 	cork uint32
+
+	// scoreboard holds TCP SACK Scoreboard information for this endpoint.
+	scoreboard *SACKScoreboard
 
 	// The options below aren't implemented, but we remember the user
 	// settings because applications expect to be able to set/query these
@@ -813,6 +819,12 @@ func (e *endpoint) SetSockOpt(opt interface{}) *tcpip.Error {
 		e.notifyProtocolGoroutine(notifyKeepaliveChanged)
 		return nil
 
+	case tcpip.BroadcastOption:
+		e.mu.Lock()
+		e.broadcast = v != 0
+		e.mu.Unlock()
+		return nil
+
 	default:
 		return nil
 	}
@@ -969,6 +981,17 @@ func (e *endpoint) GetSockOpt(opt interface{}) *tcpip.Error {
 	case *tcpip.OutOfBandInlineOption:
 		// We don't currently support disabling this option.
 		*o = 1
+		return nil
+
+	case *tcpip.BroadcastOption:
+		e.mu.Lock()
+		v := e.broadcast
+		e.mu.Unlock()
+
+		*o = 0
+		if v {
+			*o = 1
+		}
 		return nil
 
 	default:
@@ -1607,6 +1630,7 @@ func (e *endpoint) completeState() stack.TCPEndpointState {
 	s.SACKPermitted = e.sackPermitted
 	s.SACK.Blocks = make([]header.SACKBlock, e.sack.NumBlocks)
 	copy(s.SACK.Blocks, e.sack.Blocks[:e.sack.NumBlocks])
+	s.SACK.ReceivedBlocks, s.SACK.MaxSACKED = e.scoreboard.Copy()
 
 	// Copy endpoint send state.
 	e.sndBufMu.Lock()

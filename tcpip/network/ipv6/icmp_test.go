@@ -27,7 +27,7 @@ import (
 	"github.com/FlowerWrong/netstack/tcpip/link/channel"
 	"github.com/FlowerWrong/netstack/tcpip/link/sniffer"
 	"github.com/FlowerWrong/netstack/tcpip/stack"
-	"github.com/FlowerWrong/netstack/tcpip/transport/ping"
+	"github.com/FlowerWrong/netstack/tcpip/transport/icmp"
 	"github.com/FlowerWrong/netstack/waiter"
 )
 
@@ -68,8 +68,8 @@ func (e endpointWithResolutionCapability) Capabilities() stack.LinkEndpointCapab
 func newTestContext(t *testing.T) *testContext {
 	c := &testContext{
 		t:      t,
-		s0:     stack.New([]string{ProtocolName}, []string{ping.ProtocolName6}, stack.Options{}),
-		s1:     stack.New([]string{ProtocolName}, []string{ping.ProtocolName6}, stack.Options{}),
+		s0:     stack.New([]string{ProtocolName}, []string{icmp.ProtocolName6}, stack.Options{}),
+		s1:     stack.New([]string{ProtocolName}, []string{icmp.ProtocolName6}, stack.Options{}),
 		icmpCh: make(chan icmpInfo, 10),
 	}
 
