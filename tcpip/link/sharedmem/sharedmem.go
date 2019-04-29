@@ -23,6 +23,7 @@
 package sharedmem
 
 import (
+	"log"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -32,7 +33,6 @@ import (
 	"github.com/FlowerWrong/netstack/tcpip/header"
 	"github.com/FlowerWrong/netstack/tcpip/link/sharedmem/queue"
 	"github.com/FlowerWrong/netstack/tcpip/stack"
-	"log"
 )
 
 // QueueConfig holds all the file descriptors needed to describe a tx or rx
@@ -184,7 +184,7 @@ func (e *endpoint) LinkAddress() tcpip.LinkAddress {
 
 // WritePacket writes outbound packets to the file descriptor. If it is not
 // currently writable, the packet is dropped.
-func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+func (e *endpoint) WritePacket(r *stack.Route, _ *stack.GSO, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
 	// Add the ethernet header here.
 	eth := header.Ethernet(hdr.Prepend(header.EthernetMinimumSize))
 	ethHdr := &header.EthernetFields{

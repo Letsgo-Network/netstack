@@ -28,10 +28,11 @@ import (
 // NIC represents a "network interface card" to which the networking stack is
 // attached.
 type NIC struct {
-	stack  *Stack
-	id     tcpip.NICID
-	name   string
-	linkEP LinkEndpoint
+	stack    *Stack
+	id       tcpip.NICID
+	name     string
+	linkEP   LinkEndpoint
+	loopback bool
 
 	demux *transportDemuxer
 
@@ -41,10 +42,23 @@ type NIC struct {
 	primary     map[tcpip.NetworkProtocolNumber]*ilist.List
 	endpoints   map[NetworkEndpointID]*referencedNetworkEndpoint
 	subnets     []tcpip.Subnet
+	stats       NICStats
 
 	hooked        bool
 	hookedAddress tcpip.Address
 	hookedPort    uint16
+}
+
+// NICStats includes transmitted and received stats.
+type NICStats struct {
+	Tx DirectionStats
+	Rx DirectionStats
+}
+
+// DirectionStats includes packet and byte counts.
+type DirectionStats struct {
+	Packets *tcpip.StatCounter
+	Bytes   *tcpip.StatCounter
 }
 
 // PrimaryEndpointBehavior is an enumeration of an endpoint's primacy behavior.
@@ -66,15 +80,26 @@ const (
 	NeverPrimaryEndpoint
 )
 
-func newNIC(stack *Stack, id tcpip.NICID, name string, ep LinkEndpoint, hooked bool, hookedAddress tcpip.Address, hookedPort uint16) *NIC {
+func newNIC(stack *Stack, id tcpip.NICID, name string, ep LinkEndpoint, loopback bool, hooked bool, hookedAddress tcpip.Address, hookedPort uint16) *NIC {
 	return &NIC{
-		stack:         stack,
-		id:            id,
-		name:          name,
-		linkEP:        ep,
-		demux:         newTransportDemuxer(stack),
-		primary:       make(map[tcpip.NetworkProtocolNumber]*ilist.List),
-		endpoints:     make(map[NetworkEndpointID]*referencedNetworkEndpoint),
+		stack:     stack,
+		id:        id,
+		name:      name,
+		linkEP:    ep,
+		loopback:  loopback,
+		demux:     newTransportDemuxer(stack),
+		primary:   make(map[tcpip.NetworkProtocolNumber]*ilist.List),
+		endpoints: make(map[NetworkEndpointID]*referencedNetworkEndpoint),
+		stats: NICStats{
+			Tx: DirectionStats{
+				Packets: &tcpip.StatCounter{},
+				Bytes:   &tcpip.StatCounter{},
+			},
+			Rx: DirectionStats{
+				Packets: &tcpip.StatCounter{},
+				Bytes:   &tcpip.StatCounter{},
+			},
+		},
 		hooked:        hooked,
 		hookedAddress: hookedAddress,
 		hookedPort:    hookedPort,
@@ -389,6 +414,9 @@ func (n *NIC) RemoveAddress(addr tcpip.Address) *tcpip.Error {
 // This rule applies only to the slice itself, not to the items of the slice;
 // the ownership of the items is not retained by the caller.
 func (n *NIC) DeliverNetworkPacket(linkEP LinkEndpoint, remote, _ tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
+	n.stats.Rx.Packets.Increment()
+	n.stats.Rx.Bytes.IncrementBy(uint64(vv.Size()))
+
 	netProto, ok := n.stack.networkProtocols[protocol]
 	if !ok {
 		n.stack.stats.UnknownProtocolRcvdPackets.Increment()
@@ -414,7 +442,7 @@ func (n *NIC) DeliverNetworkPacket(linkEP LinkEndpoint, remote, _ tcpip.LinkAddr
 		n.mu.RLock()
 		for _, ref := range n.endpoints {
 			if ref.protocol == header.IPv4ProtocolNumber && ref.tryIncRef() {
-				r := makeRoute(protocol, dst, src, linkEP.LinkAddress(), ref)
+				r := makeRoute(protocol, dst, src, linkEP.LinkAddress(), ref, false /* handleLocal */, false /* multicastLoop */)
 				r.RemoteLinkAddress = remote
 				ref.ep.HandlePacket(&r, vv)
 				ref.decRef()
@@ -425,7 +453,7 @@ func (n *NIC) DeliverNetworkPacket(linkEP LinkEndpoint, remote, _ tcpip.LinkAddr
 	}
 
 	if ref := n.getRef(protocol, dst); ref != nil {
-		r := makeRoute(protocol, dst, src, linkEP.LinkAddress(), ref)
+		r := makeRoute(protocol, dst, src, linkEP.LinkAddress(), ref, false /* handleLocal */, false /* multicastLoop */)
 		r.RemoteLinkAddress = remote
 		ref.ep.HandlePacket(&r, vv)
 		ref.decRef()
@@ -437,7 +465,7 @@ func (n *NIC) DeliverNetworkPacket(linkEP LinkEndpoint, remote, _ tcpip.LinkAddr
 	//
 	// TODO: Should we be forwarding the packet even if promiscuous?
 	if n.stack.Forwarding() {
-		r, err := n.stack.FindRoute(0, "", dst, protocol)
+		r, err := n.stack.FindRoute(0, "", dst, protocol, false /* multicastLoop */)
 		if err != nil {
 			n.stack.stats.IP.InvalidAddressesReceived.Increment()
 			return
@@ -462,7 +490,14 @@ func (n *NIC) DeliverNetworkPacket(linkEP LinkEndpoint, remote, _ tcpip.LinkAddr
 			// Send the packet out of n.
 			hdr := buffer.NewPrependableFromView(vv.First())
 			vv.RemoveFirst()
-			n.linkEP.WritePacket(&r, hdr, vv, protocol)
+
+			// TODO: use route.WritePacket.
+			if err := n.linkEP.WritePacket(&r, nil /* gso */, hdr, vv, protocol); err != nil {
+				r.Stats().IP.OutgoingPacketErrors.Increment()
+			} else {
+				n.stats.Tx.Packets.Increment()
+				n.stats.Tx.Bytes.IncrementBy(uint64(hdr.UsedLength() + vv.Size()))
+			}
 		}
 		return
 	}
@@ -518,7 +553,7 @@ func (n *NIC) getRef(protocol tcpip.NetworkProtocolNumber, dst tcpip.Address) *r
 
 // DeliverTransportPacket delivers the packets to the appropriate transport
 // protocol endpoint.
-func (n *NIC) DeliverTransportPacket(r *Route, protocol tcpip.TransportProtocolNumber, vv buffer.VectorisedView) {
+func (n *NIC) DeliverTransportPacket(r *Route, protocol tcpip.TransportProtocolNumber, netHeader buffer.View, vv buffer.VectorisedView) {
 	state, ok := n.stack.transportProtocols[protocol]
 	if !ok {
 		n.stack.stats.UnknownProtocolRcvdPackets.Increment()
@@ -538,16 +573,16 @@ func (n *NIC) DeliverTransportPacket(r *Route, protocol tcpip.TransportProtocolN
 	}
 
 	id := TransportEndpointID{dstPort, r.LocalAddress, srcPort, r.RemoteAddress}
-	if n.demux.deliverPacket(r, protocol, vv, id, n.hookedPort) {
+	if n.demux.deliverPacket(r, protocol, netHeader, vv, id, n.hookedPort) {
 		return
 	}
-	if n.stack.demux.deliverPacket(r, protocol, vv, id, n.hookedPort) {
+	if n.stack.demux.deliverPacket(r, protocol, netHeader, vv, id, n.hookedPort) {
 		return
 	}
 
 	// Try to deliver to per-stack default handler.
 	if state.defaultHandler != nil {
-		if state.defaultHandler(r, id, vv) {
+		if state.defaultHandler(r, id, netHeader, vv) {
 			return
 		}
 	}

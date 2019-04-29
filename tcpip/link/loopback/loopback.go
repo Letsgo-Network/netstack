@@ -56,7 +56,7 @@ func (*endpoint) MTU() uint32 {
 // Capabilities implements stack.LinkEndpoint.Capabilities. Loopback advertises
 // itself as supporting checksum offload, but in reality it's just omitted.
 func (*endpoint) Capabilities() stack.LinkEndpointCapabilities {
-	return stack.CapabilityChecksumOffload | stack.CapabilitySaveRestore | stack.CapabilityLoopback
+	return stack.CapabilityRXChecksumOffload | stack.CapabilityTXChecksumOffload | stack.CapabilitySaveRestore | stack.CapabilityLoopback
 }
 
 // MaxHeaderLength implements stack.LinkEndpoint.MaxHeaderLength. Given that the
@@ -72,7 +72,7 @@ func (*endpoint) LinkAddress() tcpip.LinkAddress {
 
 // WritePacket implements stack.LinkEndpoint.WritePacket. It delivers outbound
 // packets to the network-layer dispatcher.
-func (e *endpoint) WritePacket(_ *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+func (e *endpoint) WritePacket(_ *stack.Route, _ *stack.GSO, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
 	views := make([]buffer.View, 1, 1+len(payload.Views()))
 	views[0] = hdr.View()
 	views = append(views, payload.Views()...)

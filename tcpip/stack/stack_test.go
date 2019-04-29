@@ -97,7 +97,7 @@ func (f *fakeNetworkEndpoint) HandlePacket(r *stack.Route, vv buffer.VectorisedV
 	}
 
 	// Dispatch the packet to the transport protocol.
-	f.dispatcher.DeliverTransportPacket(r, tcpip.TransportProtocolNumber(b[2]), vv)
+	f.dispatcher.DeliverTransportPacket(r, tcpip.TransportProtocolNumber(b[2]), buffer.View([]byte{}), vv)
 }
 
 func (f *fakeNetworkEndpoint) MaxHeaderLength() uint16 {
@@ -112,7 +112,7 @@ func (f *fakeNetworkEndpoint) Capabilities() stack.LinkEndpointCapabilities {
 	return f.linkEP.Capabilities()
 }
 
-func (f *fakeNetworkEndpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, _ uint8) *tcpip.Error {
+func (f *fakeNetworkEndpoint) WritePacket(r *stack.Route, gso *stack.GSO, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, _ uint8, loop stack.PacketLooping) *tcpip.Error {
 	// Increment the sent packet count in the protocol descriptor.
 	f.proto.sendPacketCount[int(r.RemoteAddress[0])%len(f.proto.sendPacketCount)]++
 
@@ -122,7 +122,19 @@ func (f *fakeNetworkEndpoint) WritePacket(r *stack.Route, hdr buffer.Prependable
 	b[0] = r.RemoteAddress[0]
 	b[1] = f.id.LocalAddress[0]
 	b[2] = byte(protocol)
-	return f.linkEP.WritePacket(r, hdr, payload, fakeNetNumber)
+
+	if loop&stack.PacketLoop != 0 {
+		views := make([]buffer.View, 1, 1+len(payload.Views()))
+		views[0] = hdr.View()
+		views = append(views, payload.Views()...)
+		vv := buffer.NewVectorisedView(len(views[0])+payload.Size(), views)
+		f.HandlePacket(r, vv)
+	}
+	if loop&stack.PacketOut == 0 {
+		return nil
+	}
+
+	return f.linkEP.WritePacket(r, gso, hdr, payload, fakeNetNumber)
 }
 
 func (*fakeNetworkEndpoint) Close() {}
@@ -261,17 +273,16 @@ func TestNetworkReceive(t *testing.T) {
 	}
 }
 
-func sendTo(t *testing.T, s *stack.Stack, addr tcpip.Address) {
-	r, err := s.FindRoute(0, "", addr, fakeNetNumber)
+func sendTo(t *testing.T, s *stack.Stack, addr tcpip.Address, payload buffer.View) {
+	r, err := s.FindRoute(0, "", addr, fakeNetNumber, false /* multicastLoop */)
 	if err != nil {
 		t.Fatalf("FindRoute failed: %v", err)
 	}
 	defer r.Release()
 
 	hdr := buffer.NewPrependable(int(r.MaxHeaderLength()))
-	if err := r.WritePacket(hdr, buffer.VectorisedView{}, fakeTransNumber, 123); err != nil {
+	if err := r.WritePacket(nil /* gso */, hdr, payload.ToVectorisedView(), fakeTransNumber, 123); err != nil {
 		t.Errorf("WritePacket failed: %v", err)
-		return
 	}
 }
 
@@ -292,7 +303,7 @@ func TestNetworkSend(t *testing.T) {
 	}
 
 	// Make sure that the link-layer endpoint received the outbound packet.
-	sendTo(t, s, "\x03")
+	sendTo(t, s, "\x03", nil)
 	if c := linkEP.Drain(); c != 1 {
 		t.Errorf("packetCount = %d, want %d", c, 1)
 	}
@@ -339,14 +350,14 @@ func TestNetworkSendMultiRoute(t *testing.T) {
 	})
 
 	// Send a packet to an odd destination.
-	sendTo(t, s, "\x05")
+	sendTo(t, s, "\x05", nil)
 
 	if c := linkEP1.Drain(); c != 1 {
 		t.Errorf("packetCount = %d, want %d", c, 1)
 	}
 
 	// Send a packet to an even destination.
-	sendTo(t, s, "\x06")
+	sendTo(t, s, "\x06", nil)
 
 	if c := linkEP2.Drain(); c != 1 {
 		t.Errorf("packetCount = %d, want %d", c, 1)
@@ -354,7 +365,7 @@ func TestNetworkSendMultiRoute(t *testing.T) {
 }
 
 func testRoute(t *testing.T, s *stack.Stack, nic tcpip.NICID, srcAddr, dstAddr, expectedSrcAddr tcpip.Address) {
-	r, err := s.FindRoute(nic, srcAddr, dstAddr, fakeNetNumber)
+	r, err := s.FindRoute(nic, srcAddr, dstAddr, fakeNetNumber, false /* multicastLoop */)
 	if err != nil {
 		t.Fatalf("FindRoute failed: %v", err)
 	}
@@ -371,7 +382,7 @@ func testRoute(t *testing.T, s *stack.Stack, nic tcpip.NICID, srcAddr, dstAddr, 
 }
 
 func testNoRoute(t *testing.T, s *stack.Stack, nic tcpip.NICID, srcAddr, dstAddr tcpip.Address) {
-	_, err := s.FindRoute(nic, srcAddr, dstAddr, fakeNetNumber)
+	_, err := s.FindRoute(nic, srcAddr, dstAddr, fakeNetNumber, false /* multicastLoop */)
 	if err != tcpip.ErrNoRoute {
 		t.Fatalf("FindRoute returned unexpected error, expected tcpip.ErrNoRoute, got %v", err)
 	}
@@ -514,7 +525,7 @@ func TestDelayedRemovalDueToRoute(t *testing.T) {
 	}
 
 	// Get a route, check that packet is still deliverable.
-	r, err := s.FindRoute(0, "", "\x02", fakeNetNumber)
+	r, err := s.FindRoute(0, "", "\x02", fakeNetNumber, false /* multicastLoop */)
 	if err != nil {
 		t.Fatalf("FindRoute failed: %v", err)
 	}
@@ -584,7 +595,7 @@ func TestPromiscuousMode(t *testing.T) {
 	}
 
 	// Check that we can't get a route as there is no local address.
-	_, err := s.FindRoute(0, "", "\x02", fakeNetNumber)
+	_, err := s.FindRoute(0, "", "\x02", fakeNetNumber, false /* multicastLoop */)
 	if err != tcpip.ErrNoRoute {
 		t.Fatalf("FindRoute returned unexpected status: expected %v, got %v", tcpip.ErrNoRoute, err)
 	}
@@ -622,7 +633,7 @@ func TestAddressSpoofing(t *testing.T) {
 
 	// With address spoofing disabled, FindRoute does not permit an address
 	// that was not added to the NIC to be used as the source.
-	r, err := s.FindRoute(0, srcAddr, dstAddr, fakeNetNumber)
+	r, err := s.FindRoute(0, srcAddr, dstAddr, fakeNetNumber, false /* multicastLoop */)
 	if err == nil {
 		t.Errorf("FindRoute succeeded with route %+v when it should have failed", r)
 	}
@@ -632,7 +643,7 @@ func TestAddressSpoofing(t *testing.T) {
 	if err := s.SetSpoofing(1, true); err != nil {
 		t.Fatalf("SetSpoofing failed: %v", err)
 	}
-	r, err = s.FindRoute(0, srcAddr, dstAddr, fakeNetNumber)
+	r, err = s.FindRoute(0, srcAddr, dstAddr, fakeNetNumber, false /* multicastLoop */)
 	if err != nil {
 		t.Fatalf("FindRoute failed: %v", err)
 	}
@@ -654,14 +665,14 @@ func TestBroadcastNeedsNoRoute(t *testing.T) {
 	s.SetRouteTable([]tcpip.Route{})
 
 	// If there is no endpoint, it won't work.
-	if _, err := s.FindRoute(1, header.IPv4Any, header.IPv4Broadcast, fakeNetNumber); err != tcpip.ErrNoRoute {
-		t.Fatalf("got FindRoute(1, %v, %v, %v) = %v, want = %v", header.IPv4Any, header.IPv4Broadcast, fakeNetNumber, err, tcpip.ErrNoRoute)
+	if _, err := s.FindRoute(1, header.IPv4Any, header.IPv4Broadcast, fakeNetNumber, false /* multicastLoop */); err != tcpip.ErrNetworkUnreachable {
+		t.Fatalf("got FindRoute(1, %v, %v, %v) = %v, want = %v", header.IPv4Any, header.IPv4Broadcast, fakeNetNumber, err, tcpip.ErrNetworkUnreachable)
 	}
 
 	if err := s.AddAddress(1, fakeNetNumber, header.IPv4Any); err != nil {
 		t.Fatalf("AddAddress(%v, %v) failed: %v", fakeNetNumber, header.IPv4Any, err)
 	}
-	r, err := s.FindRoute(1, header.IPv4Any, header.IPv4Broadcast, fakeNetNumber)
+	r, err := s.FindRoute(1, header.IPv4Any, header.IPv4Broadcast, fakeNetNumber, false /* multicastLoop */)
 	if err != nil {
 		t.Fatalf("FindRoute(1, %v, %v, %v) failed: %v", header.IPv4Any, header.IPv4Broadcast, fakeNetNumber, err)
 	}
@@ -675,8 +686,8 @@ func TestBroadcastNeedsNoRoute(t *testing.T) {
 	}
 
 	// If the NIC doesn't exist, it won't work.
-	if _, err := s.FindRoute(2, header.IPv4Any, header.IPv4Broadcast, fakeNetNumber); err != tcpip.ErrNoRoute {
-		t.Fatalf("got FindRoute(2, %v, %v, %v) = %v want = %v", header.IPv4Any, header.IPv4Broadcast, fakeNetNumber, err, tcpip.ErrNoRoute)
+	if _, err := s.FindRoute(2, header.IPv4Any, header.IPv4Broadcast, fakeNetNumber, false /* multicastLoop */); err != tcpip.ErrNetworkUnreachable {
+		t.Fatalf("got FindRoute(2, %v, %v, %v) = %v want = %v", header.IPv4Any, header.IPv4Broadcast, fakeNetNumber, err, tcpip.ErrNetworkUnreachable)
 	}
 }
 
@@ -732,17 +743,21 @@ func TestMulticastOrIPv6LinkLocalNeedsNoRoute(t *testing.T) {
 				anyAddr = header.IPv6Any
 			}
 
+			want := tcpip.ErrNetworkUnreachable
+			if tc.routeNeeded {
+				want = tcpip.ErrNoRoute
+			}
+
 			// If there is no endpoint, it won't work.
-			if _, err := s.FindRoute(1, anyAddr, tc.address, fakeNetNumber); err != tcpip.ErrNoRoute {
-				t.Fatalf("got FindRoute(1, %v, %v, %v) = %v, want = %v", anyAddr, tc.address, fakeNetNumber, err, tcpip.ErrNoRoute)
+			if _, err := s.FindRoute(1, anyAddr, tc.address, fakeNetNumber, false /* multicastLoop */); err != want {
+				t.Fatalf("got FindRoute(1, %v, %v, %v) = %v, want = %v", anyAddr, tc.address, fakeNetNumber, err, want)
 			}
 
 			if err := s.AddAddress(1, fakeNetNumber, anyAddr); err != nil {
 				t.Fatalf("AddAddress(%v, %v) failed: %v", fakeNetNumber, anyAddr, err)
 			}
 
-			r, err := s.FindRoute(1, anyAddr, tc.address, fakeNetNumber)
-			if tc.routeNeeded {
+			if r, err := s.FindRoute(1, anyAddr, tc.address, fakeNetNumber, false /* multicastLoop */); tc.routeNeeded {
 				// Route table is empty but we need a route, this should cause an error.
 				if err != tcpip.ErrNoRoute {
 					t.Fatalf("got FindRoute(1, %v, %v, %v) = %v, want = %v", anyAddr, tc.address, fakeNetNumber, err, tcpip.ErrNoRoute)
@@ -759,8 +774,8 @@ func TestMulticastOrIPv6LinkLocalNeedsNoRoute(t *testing.T) {
 				}
 			}
 			// If the NIC doesn't exist, it won't work.
-			if _, err := s.FindRoute(2, anyAddr, tc.address, fakeNetNumber); err != tcpip.ErrNoRoute {
-				t.Fatalf("got FindRoute(2, %v, %v, %v) = %v want = %v", anyAddr, tc.address, fakeNetNumber, err, tcpip.ErrNoRoute)
+			if _, err := s.FindRoute(2, anyAddr, tc.address, fakeNetNumber, false /* multicastLoop */); err != want {
+				t.Fatalf("got FindRoute(2, %v, %v, %v) = %v want = %v", anyAddr, tc.address, fakeNetNumber, err, want)
 			}
 		})
 	}
@@ -1039,6 +1054,44 @@ func TestGetMainNICAddressAddRemove(t *testing.T) {
 	}
 }
 
+func TestNICStats(t *testing.T) {
+	s := stack.New([]string{"fakeNet"}, nil, stack.Options{})
+	id1, linkEP1 := channel.New(10, defaultMTU, "")
+	if err := s.CreateNIC(1, id1); err != nil {
+		t.Fatalf("CreateNIC failed: %v", err)
+	}
+	if err := s.AddAddress(1, fakeNetNumber, "\x01"); err != nil {
+		t.Fatalf("AddAddress failed: %v", err)
+	}
+	// Route all packets for address \x01 to NIC 1.
+	s.SetRouteTable([]tcpip.Route{
+		{"\x01", "\xff", "\x00", 1},
+	})
+
+	// Send a packet to address 1.
+	buf := buffer.NewView(30)
+	linkEP1.Inject(fakeNetNumber, buf.ToVectorisedView())
+	if got, want := s.NICInfo()[1].Stats.Rx.Packets.Value(), uint64(1); got != want {
+		t.Errorf("got Rx.Packets.Value() = %d, want = %d", got, want)
+	}
+
+	if got, want := s.NICInfo()[1].Stats.Rx.Bytes.Value(), uint64(len(buf)); got != want {
+		t.Errorf("got Rx.Bytes.Value() = %d, want = %d", got, want)
+	}
+
+	payload := buffer.NewView(10)
+	// Write a packet out via the address for NIC 1
+	sendTo(t, s, "\x01", payload)
+	want := uint64(linkEP1.Drain())
+	if got := s.NICInfo()[1].Stats.Tx.Packets.Value(); got != want {
+		t.Errorf("got Tx.Packets.Value() = %d, linkEP1.Drain() = %d", got, want)
+	}
+
+	if got, want := s.NICInfo()[1].Stats.Tx.Bytes.Value(), uint64(len(payload)); got != want {
+		t.Errorf("got Tx.Bytes.Value() = %d, want = %d", got, want)
+	}
+}
+
 func TestNICForwarding(t *testing.T) {
 	// Create a stack with the fake network protocol, two NICs, each with
 	// an address.
@@ -1075,6 +1128,15 @@ func TestNICForwarding(t *testing.T) {
 	case <-linkEP2.C:
 	default:
 		t.Fatal("Packet not forwarded")
+	}
+
+	// Test that forwarding increments Tx stats correctly.
+	if got, want := s.NICInfo()[2].Stats.Tx.Packets.Value(), uint64(1); got != want {
+		t.Errorf("got Tx.Packets.Value() = %d, want = %d", got, want)
+	}
+
+	if got, want := s.NICInfo()[2].Stats.Tx.Bytes.Value(), uint64(len(buf)); got != want {
+		t.Errorf("got Tx.Bytes.Value() = %d, want = %d", got, want)
 	}
 }
 

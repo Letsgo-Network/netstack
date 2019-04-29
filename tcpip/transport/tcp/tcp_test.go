@@ -135,7 +135,7 @@ func TestPassiveConnectionAttemptIncrement(t *testing.T) {
 		t.Fatalf("NewEndpoint failed: %v", err)
 	}
 
-	if err := ep.Bind(tcpip.FullAddress{Addr: context.StackAddr, Port: context.StackPort}, nil); err != nil {
+	if err := ep.Bind(tcpip.FullAddress{Addr: context.StackAddr, Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 	if err := ep.Listen(1); err != nil {
@@ -193,7 +193,7 @@ func TestTCPResetsSentIncrement(t *testing.T) {
 	}
 	want := stats.TCP.SegmentsSent.Value() + 1
 
-	if err := ep.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := ep.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -687,6 +687,25 @@ func TestRstOnCloseWithUnreadDataFinConvertRst(t *testing.T) {
 	})
 }
 
+func TestShutdownRead(t *testing.T) {
+	c := context.New(t, defaultMTU)
+	defer c.Cleanup()
+
+	c.CreateConnected(789, 30000, nil)
+
+	if _, _, err := c.EP.Read(nil); err != tcpip.ErrWouldBlock {
+		t.Fatalf("got c.EP.Read(nil) = %v, want = %v", err, tcpip.ErrWouldBlock)
+	}
+
+	if err := c.EP.Shutdown(tcpip.ShutdownRead); err != nil {
+		t.Fatalf("Shutdown failed: %v", err)
+	}
+
+	if _, _, err := c.EP.Read(nil); err != tcpip.ErrClosedForReceive {
+		t.Fatalf("got c.EP.Read(nil) = %v, want = %v", err, tcpip.ErrClosedForReceive)
+	}
+}
+
 func TestFullWindowReceive(t *testing.T) {
 	c := context.New(t, defaultMTU)
 	defer c.Cleanup()
@@ -1042,7 +1061,7 @@ func TestScaledWindowAccept(t *testing.T) {
 		t.Fatalf("SetSockOpt failed failed: %v", err)
 	}
 
-	if err := ep.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := ep.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -1115,7 +1134,7 @@ func TestNonScaledWindowAccept(t *testing.T) {
 		t.Fatalf("SetSockOpt failed failed: %v", err)
 	}
 
-	if err := ep.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := ep.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -1618,7 +1637,7 @@ func TestPassiveSendMSSLessThanMTU(t *testing.T) {
 		t.Fatalf("SetSockOpt failed failed: %v", err)
 	}
 
-	if err := ep.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := ep.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -1675,7 +1694,7 @@ func TestSynCookiePassiveSendMSSLessThanMTU(t *testing.T) {
 	}
 	defer ep.Close()
 
-	if err := ep.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := ep.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -1840,7 +1859,7 @@ func TestCloseListener(t *testing.T) {
 		t.Fatalf("NewEndpoint failed: %v", err)
 	}
 
-	if err := ep.Bind(tcpip.FullAddress{}, nil); err != nil {
+	if err := ep.Bind(tcpip.FullAddress{}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -2669,6 +2688,18 @@ func DisabledTestFastRecovery(t *testing.T) {
 	// Receive the retransmitted packet.
 	c.ReceiveAndCheckPacket(data, rtxOffset, maxPayload)
 
+	if got, want := c.Stack().Stats().TCP.FastRetransmit.Value(), uint64(1); got != want {
+		t.Errorf("got stats.TCP.FastRetransmit.Value = %v, want = %v", got, want)
+	}
+
+	if got, want := c.Stack().Stats().TCP.Retransmits.Value(), uint64(1); got != want {
+		t.Errorf("got stats.TCP.Retransmit.Value = %v, want = %v", got, want)
+	}
+
+	if got, want := c.Stack().Stats().TCP.FastRecovery.Value(), uint64(1); got != want {
+		t.Errorf("got stats.TCP.FastRecovery.Value = %v, want = %v", got, want)
+	}
+
 	// Now send 7 mode duplicate acks. Each of these should cause a window
 	// inflation by 1 and cause the sender to send an extra packet.
 	for i := 0; i < 7; i++ {
@@ -2687,6 +2718,14 @@ func DisabledTestFastRecovery(t *testing.T) {
 
 	// Receive the retransmit due to partial ack.
 	c.ReceiveAndCheckPacket(data, rtxOffset, maxPayload)
+
+	if got, want := c.Stack().Stats().TCP.FastRetransmit.Value(), uint64(2); got != want {
+		t.Errorf("got stats.TCP.FastRetransmit.Value = %v, want = %v", got, want)
+	}
+
+	if got, want := c.Stack().Stats().TCP.Retransmits.Value(), uint64(2); got != want {
+		t.Errorf("got stats.TCP.Retransmit.Value = %v, want = %v", got, want)
+	}
 
 	// Receive the 10 extra packets that should have been released due to
 	// the congestion window inflation in recovery.
@@ -2799,6 +2838,18 @@ func DisabledTestRetransmit(t *testing.T) {
 	rtxOffset := bytesRead - maxPayload*expected
 	c.ReceiveAndCheckPacket(data, rtxOffset, maxPayload)
 
+	if got, want := c.Stack().Stats().TCP.Timeouts.Value(), uint64(1); got != want {
+		t.Errorf("got stats.TCP.Timeouts.Value = %v, want = %v", got, want)
+	}
+
+	if got, want := c.Stack().Stats().TCP.Retransmits.Value(), uint64(1); got != want {
+		t.Errorf("got stats.TCP.Retransmit.Value = %v, want = %v", got, want)
+	}
+
+	if got, want := c.Stack().Stats().TCP.SlowStartRetransmits.Value(), uint64(1); got != want {
+		t.Errorf("got stats.TCP.SlowStartRetransmits.Value = %v, want = %v", got, want)
+	}
+
 	// Acknowledge half of the pending data.
 	rtxOffset = bytesRead - expected*maxPayload/2
 	c.SendAck(790, rtxOffset)
@@ -2824,7 +2875,7 @@ func TestUpdateListenBacklog(t *testing.T) {
 		t.Fatalf("NewEndpoint failed: %v", err)
 	}
 
-	if err := ep.Bind(tcpip.FullAddress{}, nil); err != nil {
+	if err := ep.Bind(tcpip.FullAddress{}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -2931,13 +2982,38 @@ func TestReceivedInvalidSegmentCountIncrement(t *testing.T) {
 		RcvWnd:  30000,
 	})
 	tcpbuf := vv.First()[header.IPv4MinimumSize:]
-	// 12 is the TCP header data offset.
-	tcpbuf[12] = ((header.TCPMinimumSize - 1) / 4) << 4
+	tcpbuf[header.TCPDataOffset] = ((header.TCPMinimumSize - 1) / 4) << 4
 
 	c.SendSegment(vv)
 
 	if got := stats.TCP.InvalidSegmentsReceived.Value(); got != want {
 		t.Errorf("got stats.TCP.InvalidSegmentsReceived.Value() = %v, want = %v", got, want)
+	}
+}
+
+func TestReceivedIncorrectChecksumIncrement(t *testing.T) {
+	c := context.New(t, defaultMTU)
+	defer c.Cleanup()
+	c.CreateConnected(789, 30000, nil)
+	stats := c.Stack().Stats()
+	want := stats.TCP.ChecksumErrors.Value() + 1
+	vv := c.BuildSegment([]byte{0x1, 0x2, 0x3}, &context.Headers{
+		SrcPort: context.TestPort,
+		DstPort: c.Port,
+		Flags:   header.TCPFlagAck,
+		SeqNum:  seqnum.Value(790),
+		AckNum:  c.IRS.Add(1),
+		RcvWnd:  30000,
+	})
+	tcpbuf := vv.First()[header.IPv4MinimumSize:]
+	// Overwrite a byte in the payload which should cause checksum
+	// verification to fail.
+	tcpbuf[(tcpbuf[header.TCPDataOffset]>>4)*4] = 0x4
+
+	c.SendSegment(vv)
+
+	if got := stats.TCP.ChecksumErrors.Value(); got != want {
+		t.Errorf("got stats.TCP.ChecksumErrors.Value() = %d, want = %d", got, want)
 	}
 }
 
@@ -3096,7 +3172,7 @@ func TestReusePort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEndpoint failed; %v", err)
 	}
-	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -3105,7 +3181,7 @@ func TestReusePort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEndpoint failed; %v", err)
 	}
-	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 	c.EP.Close()
@@ -3115,7 +3191,7 @@ func TestReusePort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEndpoint failed; %v", err)
 	}
-	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 	if err := c.EP.Connect(tcpip.FullAddress{Addr: context.TestAddr, Port: context.TestPort}); err != tcpip.ErrConnectStarted {
@@ -3127,7 +3203,7 @@ func TestReusePort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEndpoint failed; %v", err)
 	}
-	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 	c.EP.Close()
@@ -3137,7 +3213,7 @@ func TestReusePort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEndpoint failed; %v", err)
 	}
-	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 	if err := c.EP.Listen(10); err != nil {
@@ -3149,7 +3225,7 @@ func TestReusePort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEndpoint failed; %v", err)
 	}
-	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 	if err := c.EP.Listen(10); err != nil {
@@ -3337,7 +3413,7 @@ func TestSelfConnect(t *testing.T) {
 	}
 	defer ep.Close()
 
-	if err := ep.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := ep.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -3508,7 +3584,7 @@ func TestConnectAvoidsBoundPorts(t *testing.T) {
 											}
 
 											for i := ports.FirstEphemeral; i <= math.MaxUint16; i++ {
-												if makeEP(exhaustedNetwork).Bind(tcpip.FullAddress{Addr: address(t, exhaustedAddressType, isAny), Port: uint16(i)}, nil); err != nil {
+												if makeEP(exhaustedNetwork).Bind(tcpip.FullAddress{Addr: address(t, exhaustedAddressType, isAny), Port: uint16(i)}); err != nil {
 													t.Fatalf("Bind(%d) failed: %v", i, err)
 												}
 											}

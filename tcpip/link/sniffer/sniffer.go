@@ -25,6 +25,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"sync/atomic"
 	"time"
@@ -33,7 +34,6 @@ import (
 	"github.com/FlowerWrong/netstack/tcpip/buffer"
 	"github.com/FlowerWrong/netstack/tcpip/header"
 	"github.com/FlowerWrong/netstack/tcpip/stack"
-	"log"
 )
 
 // LogPackets is a flag used to enable or disable packet logging via the log
@@ -185,10 +185,18 @@ func (e *endpoint) LinkAddress() tcpip.LinkAddress {
 	return e.lower.LinkAddress()
 }
 
+// GSOMaxSize returns the maximum GSO packet size.
+func (e *endpoint) GSOMaxSize() uint32 {
+	if gso, ok := e.lower.(stack.GSOEndpoint); ok {
+		return gso.GSOMaxSize()
+	}
+	return 0
+}
+
 // WritePacket implements the stack.LinkEndpoint interface. It is called by
 // higher-level protocols to write packets; it just logs the packet and forwards
 // the request to the lower endpoint.
-func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+func (e *endpoint) WritePacket(r *stack.Route, gso *stack.GSO, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
 	if atomic.LoadUint32(&LogPackets) == 1 && e.file == nil {
 		logPacket("send", protocol, hdr.View())
 	}
@@ -229,7 +237,7 @@ func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload b
 			panic(err)
 		}
 	}
-	return e.lower.WritePacket(r, hdr, payload, protocol)
+	return e.lower.WritePacket(r, gso, hdr, payload, protocol)
 }
 
 func logPacket(prefix string, protocol tcpip.NetworkProtocolNumber, b buffer.View) {

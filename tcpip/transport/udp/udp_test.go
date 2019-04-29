@@ -195,14 +195,11 @@ func (c *testContext) sendV6Packet(payload []byte, h *headers) {
 	})
 
 	// Calculate the UDP pseudo-header checksum.
-	xsum := header.Checksum([]byte(testV6Addr), 0)
-	xsum = header.Checksum([]byte(stackV6Addr), xsum)
-	xsum = header.Checksum([]byte{0, uint8(udp.ProtocolNumber)}, xsum)
+	xsum := header.PseudoHeaderChecksum(udp.ProtocolNumber, testV6Addr, stackV6Addr, uint16(len(u)))
 
 	// Calculate the UDP checksum and set it.
-	length := uint16(header.UDPMinimumSize + len(payload))
 	xsum = header.Checksum(payload, xsum)
-	u.SetChecksum(^u.CalculateChecksum(xsum, length))
+	u.SetChecksum(^u.CalculateChecksum(xsum))
 
 	// Inject packet.
 	c.linkEP.Inject(ipv6.ProtocolNumber, buf.ToVectorisedView())
@@ -234,14 +231,11 @@ func (c *testContext) sendPacket(payload []byte, h *headers) {
 	})
 
 	// Calculate the UDP pseudo-header checksum.
-	xsum := header.Checksum([]byte(testAddr), 0)
-	xsum = header.Checksum([]byte(stackAddr), xsum)
-	xsum = header.Checksum([]byte{0, uint8(udp.ProtocolNumber)}, xsum)
+	xsum := header.PseudoHeaderChecksum(udp.ProtocolNumber, testAddr, stackAddr, uint16(len(u)))
 
 	// Calculate the UDP checksum and set it.
-	length := uint16(header.UDPMinimumSize + len(payload))
 	xsum = header.Checksum(payload, xsum)
-	u.SetChecksum(^u.CalculateChecksum(xsum, length))
+	u.SetChecksum(^u.CalculateChecksum(xsum))
 
 	// Inject packet.
 	c.linkEP.Inject(ipv4.ProtocolNumber, buf.ToVectorisedView())
@@ -289,7 +283,7 @@ func TestBindPortReuse(t *testing.T) {
 		if err := eps[i].SetSockOpt(reusePortOpt); err != nil {
 			c.t.Fatalf("SetSockOpt failed failed: %v", err)
 		}
-		if err := eps[i].Bind(tcpip.FullAddress{Addr: stackV6Addr, Port: stackPort}, nil); err != nil {
+		if err := eps[i].Bind(tcpip.FullAddress{Addr: stackV6Addr, Port: stackPort}); err != nil {
 			t.Fatalf("ep.Bind(...) failed: %v", err)
 		}
 	}
@@ -385,7 +379,7 @@ func TestBindEphemeralPort(t *testing.T) {
 
 	c.createV6Endpoint(false)
 
-	if err := c.ep.Bind(tcpip.FullAddress{}, nil); err != nil {
+	if err := c.ep.Bind(tcpip.FullAddress{}); err != nil {
 		t.Fatalf("ep.Bind(...) failed: %v", err)
 	}
 }
@@ -412,7 +406,7 @@ func TestBindReservedPort(t *testing.T) {
 			t.Fatalf("NewEndpoint failed: %v", err)
 		}
 		defer ep.Close()
-		if got, want := ep.Bind(addr, nil), tcpip.ErrPortInUse; got != want {
+		if got, want := ep.Bind(addr), tcpip.ErrPortInUse; got != want {
 			t.Fatalf("got ep.Bind(...) = %v, want = %v", got, want)
 		}
 	}
@@ -425,11 +419,11 @@ func TestBindReservedPort(t *testing.T) {
 		defer ep.Close()
 		// We can't bind ipv4-any on the port reserved by the connected endpoint
 		// above, since the endpoint is dual-stack.
-		if got, want := ep.Bind(tcpip.FullAddress{Port: addr.Port}, nil), tcpip.ErrPortInUse; got != want {
+		if got, want := ep.Bind(tcpip.FullAddress{Port: addr.Port}), tcpip.ErrPortInUse; got != want {
 			t.Fatalf("got ep.Bind(...) = %v, want = %v", got, want)
 		}
 		// We can bind an ipv4 address on this port, though.
-		if err := ep.Bind(tcpip.FullAddress{Addr: stackAddr, Port: addr.Port}, nil); err != nil {
+		if err := ep.Bind(tcpip.FullAddress{Addr: stackAddr, Port: addr.Port}); err != nil {
 			t.Fatalf("ep.Bind(...) failed: %v", err)
 		}
 	}()
@@ -443,7 +437,7 @@ func TestBindReservedPort(t *testing.T) {
 			t.Fatalf("NewEndpoint failed: %v", err)
 		}
 		defer ep.Close()
-		if err := ep.Bind(tcpip.FullAddress{Port: addr.Port}, nil); err != nil {
+		if err := ep.Bind(tcpip.FullAddress{Port: addr.Port}); err != nil {
 			t.Fatalf("ep.Bind(...) failed: %v", err)
 		}
 	}()
@@ -456,7 +450,7 @@ func TestV4ReadOnV6(t *testing.T) {
 	c.createV6Endpoint(false)
 
 	// Bind to wildcard.
-	if err := c.ep.Bind(tcpip.FullAddress{Port: stackPort}, nil); err != nil {
+	if err := c.ep.Bind(tcpip.FullAddress{Port: stackPort}); err != nil {
 		c.t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -471,7 +465,7 @@ func TestV4ReadOnBoundToV4MappedWildcard(t *testing.T) {
 	c.createV6Endpoint(false)
 
 	// Bind to v4 mapped wildcard.
-	if err := c.ep.Bind(tcpip.FullAddress{Addr: V4MappedWildcardAddr, Port: stackPort}, nil); err != nil {
+	if err := c.ep.Bind(tcpip.FullAddress{Addr: V4MappedWildcardAddr, Port: stackPort}); err != nil {
 		c.t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -486,7 +480,7 @@ func TestV4ReadOnBoundToV4Mapped(t *testing.T) {
 	c.createV6Endpoint(false)
 
 	// Bind to local address.
-	if err := c.ep.Bind(tcpip.FullAddress{Addr: stackV4MappedAddr, Port: stackPort}, nil); err != nil {
+	if err := c.ep.Bind(tcpip.FullAddress{Addr: stackV4MappedAddr, Port: stackPort}); err != nil {
 		c.t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -501,7 +495,7 @@ func TestV6ReadOnV6(t *testing.T) {
 	c.createV6Endpoint(false)
 
 	// Bind to wildcard.
-	if err := c.ep.Bind(tcpip.FullAddress{Port: stackPort}, nil); err != nil {
+	if err := c.ep.Bind(tcpip.FullAddress{Port: stackPort}); err != nil {
 		c.t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -556,7 +550,7 @@ func TestV4ReadOnV4(t *testing.T) {
 	}
 
 	// Bind to wildcard.
-	if err := c.ep.Bind(tcpip.FullAddress{Port: stackPort}, nil); err != nil {
+	if err := c.ep.Bind(tcpip.FullAddress{Port: stackPort}); err != nil {
 		c.t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -650,7 +644,7 @@ func TestDualWriteBoundToWildcard(t *testing.T) {
 	c.createV6Endpoint(false)
 
 	// Bind to wildcard.
-	if err := c.ep.Bind(tcpip.FullAddress{Port: stackPort}, nil); err != nil {
+	if err := c.ep.Bind(tcpip.FullAddress{Port: stackPort}); err != nil {
 		c.t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -729,7 +723,7 @@ func TestV6WriteOnBoundToV4Mapped(t *testing.T) {
 	c.createV6Endpoint(false)
 
 	// Bind to v4 mapped address.
-	if err := c.ep.Bind(tcpip.FullAddress{Addr: stackV4MappedAddr, Port: stackPort}, nil); err != nil {
+	if err := c.ep.Bind(tcpip.FullAddress{Addr: stackV4MappedAddr, Port: stackPort}); err != nil {
 		c.t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -827,7 +821,7 @@ func TestReadIncrementsPacketsReceived(t *testing.T) {
 	}
 
 	// Bind to wildcard.
-	if err := c.ep.Bind(tcpip.FullAddress{Port: stackPort}, nil); err != nil {
+	if err := c.ep.Bind(tcpip.FullAddress{Port: stackPort}); err != nil {
 		c.t.Fatalf("Bind failed: %v", err)
 	}
 

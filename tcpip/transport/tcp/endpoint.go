@@ -15,6 +15,7 @@
 package tcp
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -265,6 +266,8 @@ type endpoint struct {
 	// The following are only used to assist the restore run to re-connect.
 	bindAddress       tcpip.Address
 	connectingAddress tcpip.Address
+
+	gso *stack.GSO
 }
 
 // StopWork halts packet processing. Only to be used in tests.
@@ -1091,7 +1094,7 @@ func (e *endpoint) connect(addr tcpip.FullAddress, handshake bool, run bool) (er
 	}
 
 	// Find a route to the desired destination.
-	r, err := e.stack.FindRoute(nicid, e.id.LocalAddress, addr.Addr, netProto)
+	r, err := e.stack.FindRoute(nicid, e.id.LocalAddress, addr.Addr, netProto, false /* multicastLoop */)
 	if err != nil {
 		return err
 	}
@@ -1155,6 +1158,8 @@ func (e *endpoint) connect(addr tcpip.FullAddress, handshake bool, run bool) (er
 	e.effectiveNetProtos = netProtos
 	e.connectingAddress = connectingAddr
 
+	e.initGSO()
+
 	// Connect in the restore phase does not perform handshake. Restore its
 	// connection setting here.
 	if !handshake {
@@ -1194,21 +1199,24 @@ func (e *endpoint) Shutdown(flags tcpip.ShutdownFlags) *tcpip.Error {
 
 	switch e.state {
 	case stateConnected:
+		// Close for read.
+		if (e.shutdownFlags & tcpip.ShutdownRead) != 0 {
+			// Mark read side as closed.
+			e.rcvListMu.Lock()
+			e.rcvClosed = true
+			rcvBufUsed := e.rcvBufUsed
+			e.rcvListMu.Unlock()
+
+			// If we're fully closed and we have unread data we need to abort
+			// the connection with a RST.
+			if (e.shutdownFlags&tcpip.ShutdownWrite) != 0 && rcvBufUsed > 0 {
+				e.notifyProtocolGoroutine(notifyReset)
+				return nil
+			}
+		}
+
 		// Close for write.
 		if (e.shutdownFlags & tcpip.ShutdownWrite) != 0 {
-			if (e.shutdownFlags & tcpip.ShutdownRead) != 0 {
-				// We're fully closed, if we have unread data we need to abort
-				// the connection with a RST.
-				e.rcvListMu.Lock()
-				rcvBufUsed := e.rcvBufUsed
-				e.rcvListMu.Unlock()
-
-				if rcvBufUsed > 0 {
-					e.notifyProtocolGoroutine(notifyReset)
-					return nil
-				}
-			}
-
 			e.sndBufMu.Lock()
 
 			if e.sndClosed {
@@ -1336,7 +1344,7 @@ func (e *endpoint) Accept() (tcpip.Endpoint, *waiter.Queue, *tcpip.Error) {
 }
 
 // Bind binds the endpoint to a specific local port and optionally address.
-func (e *endpoint) Bind(addr tcpip.FullAddress, commit func() *tcpip.Error) (err *tcpip.Error) {
+func (e *endpoint) Bind(addr tcpip.FullAddress) (err *tcpip.Error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -1397,14 +1405,6 @@ func (e *endpoint) Bind(addr tcpip.FullAddress, commit func() *tcpip.Error) (err
 		e.id.LocalAddress = addr.Addr
 	}
 
-	// Check the commit function.
-	if commit != nil {
-		if err := commit(); err != nil {
-			// The defer takes care of unwind.
-			return err
-		}
-	}
-
 	// Mark endpoint as bound.
 	e.state = stateBound
 
@@ -1450,8 +1450,15 @@ func (e *endpoint) HandlePacket(r *stack.Route, id stack.TransportEndpointID, vv
 		return
 	}
 
+	if !s.csumValid {
+		e.stack.Stats().MalformedRcvdPackets.Increment()
+		e.stack.Stats().TCP.ChecksumErrors.Increment()
+		s.decRef()
+		return
+	}
+
 	e.stack.Stats().TCP.ValidSegmentsReceived.Increment()
-	if (s.flags & flagRst) != 0 {
+	if (s.flags & header.TCPFlagRst) != 0 {
 		e.stack.Stats().TCP.ResetsReceived.Increment()
 	}
 
@@ -1604,6 +1611,16 @@ func (e *endpoint) maybeEnableSACKPermitted(synOpts *header.TCPSynOptions) {
 	}
 }
 
+// maxOptionSize return the maximum size of TCP options.
+func (e *endpoint) maxOptionSize() (size int) {
+	var maxSackBlocks [header.TCPMaxSACKBlocks]header.SACKBlock
+	options := e.makeOptions(maxSackBlocks[:])
+	size = len(options)
+	putOptions(options)
+
+	return size
+}
+
 // completeState makes a full copy of the endpoint and returns it. This is used
 // before invoking the probe. The state returned may not be fully consistent if
 // there are intervening syscalls when the state is being copied.
@@ -1695,4 +1712,26 @@ func (e *endpoint) completeState() stack.TCPEndpointState {
 		}
 	}
 	return s
+}
+
+func (e *endpoint) initGSO() {
+	if e.route.Capabilities()&stack.CapabilityGSO == 0 {
+		return
+	}
+
+	gso := &stack.GSO{}
+	switch e.route.NetProto {
+	case header.IPv4ProtocolNumber:
+		gso.Type = stack.GSOTCPv4
+		gso.L3HdrLen = header.IPv4MinimumSize
+	case header.IPv6ProtocolNumber:
+		gso.Type = stack.GSOTCPv6
+		gso.L3HdrLen = header.IPv6MinimumSize
+	default:
+		panic(fmt.Sprintf("Unknown netProto: %v", e.netProto))
+	}
+	gso.NeedsCsum = true
+	gso.CsumOffset = header.TCPChecksumOffset
+	gso.MaxSize = e.route.GSOMaxSize()
+	e.gso = gso
 }

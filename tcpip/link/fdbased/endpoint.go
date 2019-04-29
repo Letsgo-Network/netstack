@@ -99,11 +99,6 @@ type endpoint struct {
 	inboundDispatcher linkDispatcher
 	dispatcher        stack.NetworkDispatcher
 
-	// handleLocal indicates whether packets destined to itself should be
-	// handled by the netstack internally (true) or be forwarded to the FD
-	// endpoint (false).
-	handleLocal bool
-
 	// packetDispatchMode controls the packet dispatcher used by this
 	// endpoint.
 	packetDispatchMode PacketDispatchMode
@@ -115,6 +110,10 @@ type endpoint struct {
 	// ringOffset is the current offset into the ring buffer where the next
 	// inbound packet will be placed by the kernel.
 	ringOffset int
+
+	// gsoMaxSize is the maximum GSO packet size. It is zero if GSO is
+	// disabled.
+	gsoMaxSize uint32
 }
 
 // Options specify the details about the fd-based endpoint to be created.
@@ -122,22 +121,22 @@ type Options struct {
 	FD                 int
 	MTU                uint32
 	EthernetHeader     bool
-	ChecksumOffload    bool
 	ClosedFunc         func(*tcpip.Error)
 	Address            tcpip.LinkAddress
 	SaveRestore        bool
 	DisconnectOk       bool
-	HandleLocal        bool
+	GSOMaxSize         uint32
 	PacketDispatchMode PacketDispatchMode
+	TXChecksumOffload  bool
+	RXChecksumOffload  bool
 }
 
-func isSocketFD(fd int) bool {
+func isSocketFD(fd int) (bool, error) {
 	var stat syscall.Stat_t
 	if err := syscall.Fstat(fd, &stat); err != nil {
-		// TODO : replace panic with an error return.
-		panic(fmt.Sprintf("syscall.Fstat(%v,...) failed: %v", fd, err))
+		return false, fmt.Errorf("syscall.Fstat(%v,...) failed: %v", fd, err)
 	}
-	return (stat.Mode & syscall.S_IFSOCK) == syscall.S_IFSOCK
+	return (stat.Mode & syscall.S_IFSOCK) == syscall.S_IFSOCK, nil
 }
 
 // Attach launches the goroutine that reads packets from the file descriptor and
@@ -176,17 +175,27 @@ func (e *endpoint) LinkAddress() tcpip.LinkAddress {
 	return e.addr
 }
 
+// virtioNetHdr is declared in linux/virtio_net.h.
+type virtioNetHdr struct {
+	flags      uint8
+	gsoType    uint8
+	hdrLen     uint16
+	gsoSize    uint16
+	csumStart  uint16
+	csumOffset uint16
+}
+
+// These constants are declared in linux/virtio_net.h.
+const (
+	_VIRTIO_NET_HDR_F_NEEDS_CSUM = 1
+
+	_VIRTIO_NET_HDR_GSO_TCPV4 = 1
+	_VIRTIO_NET_HDR_GSO_TCPV6 = 4
+)
+
 // WritePacket writes outbound packets to the file descriptor. If it is not
 // currently writable, the packet is dropped.
-func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
-	if e.handleLocal && r.LocalAddress != "" && r.LocalAddress == r.RemoteAddress {
-		views := make([]buffer.View, 1, 1+len(payload.Views()))
-		views[0] = hdr.View()
-		views = append(views, payload.Views()...)
-		vv := buffer.NewVectorisedView(len(views[0])+payload.Size(), views)
-		e.dispatcher.DeliverNetworkPacket(e, r.RemoteLinkAddress, r.LocalLinkAddress, protocol, vv)
-		return nil
-	}
+func (e *endpoint) WritePacket(r *stack.Route, gso *stack.GSO, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
 	if e.hdrSize > 0 {
 		// Add ethernet header if needed.
 		eth := header.Ethernet(hdr.Prepend(header.EthernetMinimumSize))
@@ -215,12 +224,37 @@ func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload b
 			}
 		}
 	}
+	if e.Capabilities()&stack.CapabilityGSO != 0 {
+		vnetHdr := virtioNetHdr{}
+		vnetHdrBuf := vnetHdrToByteSlice(&vnetHdr)
+		if gso != nil {
+			vnetHdr.hdrLen = uint16(hdr.UsedLength())
+			if gso.NeedsCsum {
+				vnetHdr.flags = _VIRTIO_NET_HDR_F_NEEDS_CSUM
+				vnetHdr.csumStart = header.EthernetMinimumSize + gso.L3HdrLen
+				vnetHdr.csumOffset = gso.CsumOffset
+			}
+			if gso.Type != stack.GSONone && uint16(payload.Size()) > gso.MSS {
+				switch gso.Type {
+				case stack.GSOTCPv4:
+					vnetHdr.gsoType = _VIRTIO_NET_HDR_GSO_TCPV4
+				case stack.GSOTCPv6:
+					vnetHdr.gsoType = _VIRTIO_NET_HDR_GSO_TCPV6
+				default:
+					panic(fmt.Sprintf("Unknown gso type: %v", gso.Type))
+				}
+				vnetHdr.gsoSize = gso.MSS
+			}
+		}
+
+		return rawfile.NonBlockingWrite3(e.fd, vnetHdrBuf, b1, payload.ToView())
+	}
 
 	if payload.Size() == 0 {
 		return rawfile.NonBlockingWrite(e.fd, b1)
 	}
 
-	return rawfile.NonBlockingWrite2(e.fd, b1, payload.ToView())
+	return rawfile.NonBlockingWrite3(e.fd, b1, payload.ToView(), nil)
 }
 
 // WriteRawPacket writes a raw packet directly to the file descriptor.
@@ -242,13 +276,25 @@ func (e *endpoint) capViews(k, n int, buffers []int) int {
 
 func (e *endpoint) allocateViews(bufConfig []int) {
 	for k := 0; k < len(e.views); k++ {
+		var vnetHdr [virtioNetHdrSize]byte
+		vnetHdrOff := 0
+		if e.Capabilities()&stack.CapabilityGSO != 0 {
+			// The kernel adds virtioNetHdr before each packet, but
+			// we don't use it, so so we allocate a buffer for it,
+			// add it in iovecs but don't add it in a view.
+			e.iovecs[k][0] = syscall.Iovec{
+				Base: &vnetHdr[0],
+				Len:  uint64(virtioNetHdrSize),
+			}
+			vnetHdrOff++
+		}
 		for i := 0; i < len(bufConfig); i++ {
 			if e.views[k][i] != nil {
 				break
 			}
 			b := buffer.NewView(bufConfig[i])
 			e.views[k][i] = b
-			e.iovecs[k][i] = syscall.Iovec{
+			e.iovecs[k][i+vnetHdrOff] = syscall.Iovec{
 				Base: &b[0],
 				Len:  uint64(len(b)),
 			}
@@ -264,7 +310,11 @@ func (e *endpoint) dispatch() (bool, *tcpip.Error) {
 	if err != nil {
 		return false, err
 	}
-
+	if e.Capabilities()&stack.CapabilityGSO != 0 {
+		// Skip virtioNetHdr which is added before each packet, it
+		// isn't used and it isn't in a view.
+		n -= virtioNetHdrSize
+	}
 	if n <= e.hdrSize {
 		return false, nil
 	}
@@ -324,8 +374,11 @@ func (e *endpoint) recvMMsgDispatch() (bool, *tcpip.Error) {
 	}
 	// Process each of received packets.
 	for k := 0; k < nMsgs; k++ {
-		n := e.msgHdrs[k].Len
-		if n <= uint32(e.hdrSize) {
+		n := int(e.msgHdrs[k].Len)
+		if e.Capabilities()&stack.CapabilityGSO != 0 {
+			n -= virtioNetHdrSize
+		}
+		if n <= e.hdrSize {
 			return false, nil
 		}
 
@@ -383,6 +436,11 @@ func (e *endpoint) dispatchLoop() *tcpip.Error {
 	}
 }
 
+// GSOMaxSize returns the maximum GSO packet size.
+func (e *endpoint) GSOMaxSize() uint32 {
+	return e.gsoMaxSize
+}
+
 // InjectableEndpoint is an injectable fd-based endpoint. The endpoint writes
 // to the FD, but does not read from it. All reads come from injected packets.
 type InjectableEndpoint struct {
@@ -403,12 +461,13 @@ func (e *InjectableEndpoint) Inject(protocol tcpip.NetworkProtocolNumber, vv buf
 }
 
 // NewInjectable creates a new fd-based InjectableEndpoint.
-func NewInjectable(fd int, mtu uint32) (tcpip.LinkEndpointID, *InjectableEndpoint) {
+func NewInjectable(fd int, mtu uint32, capabilities stack.LinkEndpointCapabilities) (tcpip.LinkEndpointID, *InjectableEndpoint) {
 	syscall.SetNonblock(fd, true)
 
 	e := &InjectableEndpoint{endpoint: endpoint{
-		fd:  fd,
-		mtu: mtu,
+		fd:   fd,
+		mtu:  mtu,
+		caps: capabilities,
 	}}
 
 	return stack.RegisterLinkEndpoint(e), e

@@ -23,6 +23,7 @@ import (
 
 	"github.com/FlowerWrong/netstack/rand"
 	"github.com/FlowerWrong/netstack/tcpip"
+	tcpipHeader "github.com/FlowerWrong/netstack/tcpip/header"
 	"github.com/FlowerWrong/netstack/tcpip/network/ipv4"
 	"github.com/FlowerWrong/netstack/tcpip/stack"
 	"github.com/FlowerWrong/netstack/tcpip/transport/udp"
@@ -119,47 +120,34 @@ func (c *Client) Config() Config {
 // If the server sets a lease limit a timer is set to automatically
 // renew it.
 func (c *Client) Request(ctx context.Context, requestedAddr tcpip.Address) (cfg Config, reterr error) {
-	if err := c.stack.AddAddressWithOptions(c.nicid, ipv4.ProtocolNumber, "\xff\xff\xff\xff", stack.NeverPrimaryEndpoint); err != nil && err != tcpip.ErrDuplicateAddress {
-		return Config{}, fmt.Errorf("dhcp: %v", err)
+	// TODO: remove calls to {Add,Remove}Address when they're no
+	// longer required to send and receive broadcast.
+	if err := c.stack.AddAddressWithOptions(c.nicid, ipv4.ProtocolNumber, tcpipHeader.IPv4Any, stack.NeverPrimaryEndpoint); err != nil && err != tcpip.ErrDuplicateAddress {
+		return Config{}, fmt.Errorf("dhcp: AddAddressWithOptions(): %s", err)
 	}
-	if err := c.stack.AddAddressWithOptions(c.nicid, ipv4.ProtocolNumber, "\x00\x00\x00\x00", stack.NeverPrimaryEndpoint); err != nil && err != tcpip.ErrDuplicateAddress {
-		return Config{}, fmt.Errorf("dhcp: %v", err)
-	}
-	defer c.stack.RemoveAddress(c.nicid, "\xff\xff\xff\xff")
-	defer c.stack.RemoveAddress(c.nicid, "\x00\x00\x00\x00")
+	defer c.stack.RemoveAddress(c.nicid, tcpipHeader.IPv4Any)
 
 	var wq waiter.Queue
 	ep, err := c.stack.NewEndpoint(udp.ProtocolNumber, ipv4.ProtocolNumber, &wq)
 	if err != nil {
-		return Config{}, fmt.Errorf("dhcp: outbound endpoint: %v", err)
+		return Config{}, fmt.Errorf("dhcp: NewEndpoint(): %s", err)
 	}
 	defer ep.Close()
-	if err := ep.Bind(tcpip.FullAddress{
-		Addr: "\x00\x00\x00\x00",
-		Port: ClientPort,
-		NIC:  c.nicid,
-	}, nil); err != nil {
-		return Config{}, fmt.Errorf("dhcp: connect failed: %v", err)
-	}
 	if err := ep.SetSockOpt(tcpip.BroadcastOption(1)); err != nil {
-		return Config{}, fmt.Errorf("dhcp: setsockopt SO_BROADCAST: %v", err)
+		return Config{}, fmt.Errorf("dhcp: SetSockOpt(BroadcastOption): %s", err)
 	}
-
-	epin, err := c.stack.NewEndpoint(udp.ProtocolNumber, ipv4.ProtocolNumber, &wq)
-	if err != nil {
-		return Config{}, fmt.Errorf("dhcp: inbound endpoint: %v", err)
-	}
-	defer epin.Close()
-	if err := epin.Bind(tcpip.FullAddress{
-		Addr: "\xff\xff\xff\xff",
+	if err := ep.Bind(tcpip.FullAddress{
+		Addr: tcpipHeader.IPv4Any,
 		Port: ClientPort,
 		NIC:  c.nicid,
-	}, nil); err != nil {
-		return Config{}, fmt.Errorf("dhcp: connect failed: %v", err)
+	}); err != nil {
+		return Config{}, fmt.Errorf("dhcp: Bind(): %s", err)
 	}
 
 	var xid [4]byte
-	rand.Read(xid[:])
+	if _, err := rand.Read(xid[:]); err != nil {
+		return Config{}, fmt.Errorf("dhcp: rand.Read(): %s", err)
+	}
 
 	// DHCPDISCOVERY
 	discOpts := options{
@@ -191,7 +179,7 @@ func (c *Client) Request(ctx context.Context, requestedAddr tcpip.Address) (cfg 
 	h.setOptions(discOpts)
 
 	serverAddr := &tcpip.FullAddress{
-		Addr: "\xff\xff\xff\xff",
+		Addr: tcpipHeader.IPv4Broadcast,
 		Port: ServerPort,
 		NIC:  c.nicid,
 	}
@@ -222,8 +210,7 @@ func (c *Client) Request(ctx context.Context, requestedAddr tcpip.Address) (cfg 
 	// DHCPOFFER
 	var opts options
 	for {
-		var addr tcpip.FullAddress
-		v, _, err := epin.Read(&addr)
+		v, _, err := ep.Read(nil)
 		if err == tcpip.ErrWouldBlock {
 			select {
 			case <-ch:
@@ -271,12 +258,11 @@ func (c *Client) Request(ctx context.Context, requestedAddr tcpip.Address) (cfg 
 		c.cfg = cfg
 		c.mu.Unlock()
 
-		// Clean up broadcast addresses before calling acquiredFunc
+		// Clean up addresses before calling acquiredFunc
 		// so nothing else uses them by mistake.
 		//
-		// (The deferred RemoveAddress calls above silently error.)
-		c.stack.RemoveAddress(c.nicid, "\xff\xff\xff\xff")
-		c.stack.RemoveAddress(c.nicid, "\x00\x00\x00\x00")
+		// (The deferred RemoveAddress call above silently errors.)
+		c.stack.RemoveAddress(c.nicid, tcpipHeader.IPv4Any)
 
 		if c.acquiredFunc != nil {
 			c.acquiredFunc(oldAddr, addr, cfg)
@@ -311,8 +297,7 @@ func (c *Client) Request(ctx context.Context, requestedAddr tcpip.Address) (cfg 
 
 	// DHCPACK
 	for {
-		var addr tcpip.FullAddress
-		v, _, err := epin.Read(&addr)
+		v, _, err := ep.Read(nil)
 		if err == tcpip.ErrWouldBlock {
 			select {
 			case <-ch:

@@ -71,6 +71,17 @@ type TransportEndpoint interface {
 	HandleControlPacket(id TransportEndpointID, typ ControlType, extra uint32, vv buffer.VectorisedView)
 }
 
+// RawTransportEndpoint is the interface that needs to be implemented by raw
+// transport protocol endpoints. RawTransportEndpoints receive the entire
+// packet - including the link, network, and transport headers - as delivered
+// to netstack.
+type RawTransportEndpoint interface {
+	// HandlePacket is called by the stack when new packets arrive to
+	// this transport endpoint. The packet contains all data from the link
+	// layer up.
+	HandlePacket(r *Route, netHeader buffer.View, packet buffer.VectorisedView)
+}
+
 // TransportProtocol is the interface that needs to be implemented by transport
 // protocols (e.g., tcp, udp) that want to be part of the networking stack.
 type TransportProtocol interface {
@@ -79,6 +90,9 @@ type TransportProtocol interface {
 
 	// NewEndpoint creates a new endpoint of the transport protocol.
 	NewEndpoint(stack *Stack, netProto tcpip.NetworkProtocolNumber, waitQueue *waiter.Queue) (tcpip.Endpoint, *tcpip.Error)
+
+	// NewRawEndpoint creates a new raw endpoint of the transport protocol.
+	NewRawEndpoint(stack *Stack, netProto tcpip.NetworkProtocolNumber, waitQueue *waiter.Queue) (tcpip.Endpoint, *tcpip.Error)
 
 	// MinimumPacketSize returns the minimum valid packet size of this
 	// transport protocol. The stack automatically drops any packets smaller
@@ -113,13 +127,26 @@ type TransportProtocol interface {
 // the network layer.
 type TransportDispatcher interface {
 	// DeliverTransportPacket delivers packets to the appropriate
-	// transport protocol endpoint.
-	DeliverTransportPacket(r *Route, protocol tcpip.TransportProtocolNumber, vv buffer.VectorisedView)
+	// transport protocol endpoint. It also returns the network layer
+	// header for the enpoint to inspect or pass up the stack.
+	DeliverTransportPacket(r *Route, protocol tcpip.TransportProtocolNumber, netHeader buffer.View, vv buffer.VectorisedView)
 
 	// DeliverTransportControlPacket delivers control packets to the
 	// appropriate transport protocol endpoint.
 	DeliverTransportControlPacket(local, remote tcpip.Address, net tcpip.NetworkProtocolNumber, trans tcpip.TransportProtocolNumber, typ ControlType, extra uint32, vv buffer.VectorisedView)
 }
+
+// PacketLooping specifies where an outbound packet should be sent.
+type PacketLooping byte
+
+const (
+	// PacketOut indicates that the packet should be passed to the link
+	// endpoint.
+	PacketOut PacketLooping = 1 << iota
+
+	// PacketLoop indicates that the packet should be handled locally.
+	PacketLoop
+)
 
 // NetworkEndpoint is the interface that needs to be implemented by endpoints
 // of network layer protocols (e.g., ipv4, ipv6).
@@ -145,7 +172,7 @@ type NetworkEndpoint interface {
 
 	// WritePacket writes a packet to the given destination address and
 	// protocol.
-	WritePacket(r *Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8) *tcpip.Error
+	WritePacket(r *Route, gso *GSO, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8, loop PacketLooping) *tcpip.Error
 
 	// ID returns the network protocol endpoint ID.
 	ID() *NetworkEndpointID
@@ -205,11 +232,20 @@ type LinkEndpointCapabilities uint
 
 // The following are the supported link endpoint capabilities.
 const (
-	CapabilityChecksumOffload LinkEndpointCapabilities = 1 << iota
+	CapabilityNone LinkEndpointCapabilities = 0
+	// CapabilityTXChecksumOffload indicates that the link endpoint supports
+	// checksum computation for outgoing packets and the stack can skip
+	// computing checksums when sending packets.
+	CapabilityTXChecksumOffload LinkEndpointCapabilities = 1 << iota
+	// CapabilityRXChecksumOffload indicates that the link endpoint supports
+	// checksum verification on received packets and that it's safe for the
+	// stack to skip checksum verification.
+	CapabilityRXChecksumOffload
 	CapabilityResolutionRequired
 	CapabilitySaveRestore
 	CapabilityDisconnectOk
 	CapabilityLoopback
+	CapabilityGSO
 )
 
 // LinkEndpoint is the interface implemented by data link layer protocols (e.g.,
@@ -242,7 +278,7 @@ type LinkEndpoint interface {
 	// To participate in transparent bridging, a LinkEndpoint implementation
 	// should call eth.Encode with header.EthernetFields.SrcAddr set to
 	// r.LocalLinkAddress if it is provided.
-	WritePacket(r *Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error
+	WritePacket(r *Route, gso *GSO, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error
 
 	// Attach attaches the data link layer endpoint to the network-layer
 	// dispatcher of the stack.
@@ -364,4 +400,42 @@ func FindLinkEndpoint(id tcpip.LinkEndpointID) LinkEndpoint {
 	defer linkEPMu.RUnlock()
 
 	return linkEndpoints[id]
+}
+
+// GSOType is the type of GSO segments.
+//
+// +stateify savable
+type GSOType int
+
+// Types of gso segments.
+const (
+	GSONone GSOType = iota
+	GSOTCPv4
+	GSOTCPv6
+)
+
+// GSO contains generic segmentation offload properties.
+//
+// +stateify savable
+type GSO struct {
+	// Type is one of GSONone, GSOTCPv4, etc.
+	Type GSOType
+	// NeedsCsum is set if the checksum offload is enabled.
+	NeedsCsum bool
+	// CsumOffset is offset after that to place checksum.
+	CsumOffset uint16
+
+	// Mss is maximum segment size.
+	MSS uint16
+	// L3Len is L3 (IP) header length.
+	L3HdrLen uint16
+
+	// MaxSize is maximum GSO packet size.
+	MaxSize uint32
+}
+
+// GSOEndpoint provides access to GSO properties.
+type GSOEndpoint interface {
+	// GSOMaxSize returns the maximum GSO packet size.
+	GSOMaxSize() uint32
 }

@@ -21,11 +21,11 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/tcpip/link/fdbased"
-	"github.com/google/netstack/tcpip/network/ipv4"
-	"github.com/google/netstack/tcpip/stack"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/tcpip/link/fdbased"
+	"github.com/FlowerWrong/netstack/tcpip/network/ipv4"
+	"github.com/FlowerWrong/netstack/tcpip/stack"
 )
 
 func TestInjectableEndpointRawDispatch(t *testing.T) {
@@ -50,7 +50,7 @@ func TestInjectableEndpointDispatch(t *testing.T) {
 	hdr.Prepend(1)[0] = 0xFA
 	packetRoute := stack.Route{RemoteAddress: dstIP}
 
-	endpoint.WritePacket(&packetRoute, hdr,
+	endpoint.WritePacket(&packetRoute, nil /* gso */, hdr,
 		buffer.NewViewFromBytes([]byte{0xFB}).ToVectorisedView(), ipv4.ProtocolNumber)
 
 	buf := make([]byte, 6500)
@@ -68,7 +68,7 @@ func TestInjectableEndpointDispatchHdrOnly(t *testing.T) {
 	hdr := buffer.NewPrependable(1)
 	hdr.Prepend(1)[0] = 0xFA
 	packetRoute := stack.Route{RemoteAddress: dstIP}
-	endpoint.WritePacket(&packetRoute, hdr,
+	endpoint.WritePacket(&packetRoute, nil /* gso */, hdr,
 		buffer.NewView(0).ToVectorisedView(), ipv4.ProtocolNumber)
 	buf := make([]byte, 6500)
 	bytesRead, err := sock.Read(buf)
@@ -87,8 +87,8 @@ func makeTestInjectableEndpoint(t *testing.T) (*InjectableEndpoint, *os.File, tc
 	if err != nil {
 		t.Fatal("Failed to create socket pair:", err)
 	}
-	_, underlyingEndpoint := fdbased.NewInjectable(pair[1], 6500)
+	_, underlyingEndpoint := fdbased.NewInjectable(pair[1], 6500, stack.CapabilityNone)
 	routes := map[tcpip.Address]stack.InjectableLinkEndpoint{dstIP: underlyingEndpoint}
-	_, endpoint := NewInjectableEndpoint(routes, 6500)
+	_, endpoint := NewInjectableEndpoint(routes)
 	return endpoint, os.NewFile(uintptr(pair[0]), "test route end"), dstIP
 }

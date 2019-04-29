@@ -16,6 +16,7 @@ package gonet
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"reflect"
 	"strings"
@@ -220,6 +221,171 @@ func TestCloseReaderWithForwarder(t *testing.T) {
 		t.Errorf("c.Read() didn't unblock")
 	}
 	sender.close()
+}
+
+func TestCloseRead(t *testing.T) {
+	s, terr := newLoopbackStack()
+	if terr != nil {
+		t.Fatalf("newLoopbackStack() = %v", terr)
+	}
+
+	addr := tcpip.FullAddress{NICID, tcpip.Address(net.IPv4(169, 254, 10, 1).To4()), 11211}
+	s.AddAddress(NICID, ipv4.ProtocolNumber, addr.Addr)
+
+	fwd := tcp.NewForwarder(s, 30000, 10, func(r *tcp.ForwarderRequest) {
+		var wq waiter.Queue
+		ep, err := r.CreateEndpoint(&wq)
+		if err != nil {
+			t.Fatalf("r.CreateEndpoint() = %v", err)
+		}
+		defer ep.Close()
+		r.Complete(false)
+
+		c := NewConn(&wq, ep)
+
+		buf := make([]byte, 256)
+		n, e := c.Read(buf)
+		if e != nil || string(buf[:n]) != "abc123" {
+			t.Fatalf("c.Read() = (%d, %v), want (6, nil)", n, e)
+		}
+
+		if n, e = c.Write([]byte("abc123")); e != nil {
+			t.Errorf("c.Write() = (%d, %v), want (6, nil)", n, e)
+		}
+	})
+
+	s.SetTransportProtocolHandler(tcp.ProtocolNumber, fwd.HandlePacket)
+
+	tc, terr := connect(s, addr)
+	if terr != nil {
+		t.Fatalf("connect() = %v", terr)
+	}
+	c := NewConn(tc.wq, tc.ep)
+
+	if err := c.CloseRead(); err != nil {
+		t.Errorf("c.CloseRead() = %v", err)
+	}
+
+	buf := make([]byte, 256)
+	if n, err := c.Read(buf); err != io.EOF {
+		t.Errorf("c.Read() = (%d, %v), want (0, io.EOF)", n, err)
+	}
+
+	if n, err := c.Write([]byte("abc123")); n != 6 || err != nil {
+		t.Errorf("c.Write() = (%d, %v), want (6, nil)", n, err)
+	}
+}
+
+func TestCloseWrite(t *testing.T) {
+	s, terr := newLoopbackStack()
+	if terr != nil {
+		t.Fatalf("newLoopbackStack() = %v", terr)
+	}
+
+	addr := tcpip.FullAddress{NICID, tcpip.Address(net.IPv4(169, 254, 10, 1).To4()), 11211}
+	s.AddAddress(NICID, ipv4.ProtocolNumber, addr.Addr)
+
+	fwd := tcp.NewForwarder(s, 30000, 10, func(r *tcp.ForwarderRequest) {
+		var wq waiter.Queue
+		ep, err := r.CreateEndpoint(&wq)
+		if err != nil {
+			t.Fatalf("r.CreateEndpoint() = %v", err)
+		}
+		defer ep.Close()
+		r.Complete(false)
+
+		c := NewConn(&wq, ep)
+
+		n, e := c.Read(make([]byte, 256))
+		if n != 0 || e != io.EOF {
+			t.Errorf("c.Read() = (%d, %v), want (0, io.EOF)", n, e)
+		}
+
+		if n, e = c.Write([]byte("abc123")); n != 6 || e != nil {
+			t.Errorf("c.Write() = (%d, %v), want (6, nil)", n, e)
+		}
+	})
+
+	s.SetTransportProtocolHandler(tcp.ProtocolNumber, fwd.HandlePacket)
+
+	tc, terr := connect(s, addr)
+	if terr != nil {
+		t.Fatalf("connect() = %v", terr)
+	}
+	c := NewConn(tc.wq, tc.ep)
+
+	if err := c.CloseWrite(); err != nil {
+		t.Errorf("c.CloseWrite() = %v", err)
+	}
+
+	buf := make([]byte, 256)
+	n, err := c.Read(buf)
+	if err != nil || string(buf[:n]) != "abc123" {
+		t.Fatalf("c.Read() = (%d, %v), want (6, nil)", n, err)
+	}
+
+	n, err = c.Write([]byte("abc123"))
+	got, ok := err.(*net.OpError)
+	want := "endpoint is closed for send"
+	if n != 0 || !ok || got.Op != "write" || got.Err == nil || !strings.HasSuffix(got.Err.Error(), want) {
+		t.Errorf("c.Write() = (%d, %v), want (0, OpError(Op: write, Err: %s))", n, err, want)
+	}
+}
+
+func TestUDPForwarder(t *testing.T) {
+	s, terr := newLoopbackStack()
+	if terr != nil {
+		t.Fatalf("newLoopbackStack() = %v", terr)
+	}
+
+	ip1 := tcpip.Address(net.IPv4(169, 254, 10, 1).To4())
+	addr1 := tcpip.FullAddress{NICID, ip1, 11211}
+	s.AddAddress(NICID, ipv4.ProtocolNumber, ip1)
+	ip2 := tcpip.Address(net.IPv4(169, 254, 10, 2).To4())
+	addr2 := tcpip.FullAddress{NICID, ip2, 11311}
+	s.AddAddress(NICID, ipv4.ProtocolNumber, ip2)
+
+	done := make(chan struct{})
+	fwd := udp.NewForwarder(s, func(r *udp.ForwarderRequest) {
+		defer close(done)
+
+		var wq waiter.Queue
+		ep, err := r.CreateEndpoint(&wq)
+		if err != nil {
+			t.Fatalf("r.CreateEndpoint() = %v", err)
+		}
+		defer ep.Close()
+
+		c := NewConn(&wq, ep)
+
+		buf := make([]byte, 256)
+		n, e := c.Read(buf)
+		if e != nil {
+			t.Errorf("c.Read() = %v", e)
+		}
+
+		if _, e := c.Write(buf[:n]); e != nil {
+			t.Errorf("c.Write() = %v", e)
+		}
+	})
+	s.SetTransportProtocolHandler(udp.ProtocolNumber, fwd.HandlePacket)
+
+	c2, err := NewPacketConn(s, addr2, ipv4.ProtocolNumber)
+	if err != nil {
+		t.Fatal("NewPacketConn(port 5):", err)
+	}
+
+	sent := "abc123"
+	sendAddr := fullToUDPAddr(addr1)
+	if n, err := c2.WriteTo([]byte(sent), sendAddr); err != nil || n != len(sent) {
+		t.Errorf("c1.WriteTo(%q, %v) = %d, %v, want = %d, %v", sent, sendAddr, n, err, len(sent), nil)
+	}
+
+	buf := make([]byte, 256)
+	n, recvAddr, err := c2.ReadFrom(buf)
+	if err != nil || recvAddr.String() != sendAddr.String() {
+		t.Errorf("c1.ReadFrom() = %d, %v, %v, want = %d, %v, %v", n, recvAddr, err, len(sent), sendAddr, nil)
+	}
 }
 
 // TestDeadlineChange tests that changing the deadline affects currently blocked reads.

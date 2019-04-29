@@ -60,7 +60,7 @@ func NewListener(s *stack.Stack, addr tcpip.FullAddress, network tcpip.NetworkPr
 		return nil, errors.New(err.String())
 	}
 
-	if err := ep.Bind(addr, nil); err != nil {
+	if err := ep.Bind(addr); err != nil {
 		ep.Close()
 		return nil, &net.OpError{
 			Op:   "bind",
@@ -435,6 +435,28 @@ func (c *Conn) Close() error {
 	return nil
 }
 
+// CloseRead shuts down the reading side of the TCP connection. Most callers
+// should just use Close.
+//
+// A TCP Half-Close is performed the same as CloseRead for *net.TCPConn.
+func (c *Conn) CloseRead() error {
+	if terr := c.ep.Shutdown(tcpip.ShutdownRead); terr != nil {
+		return c.newOpError("close", errors.New(terr.String()))
+	}
+	return nil
+}
+
+// CloseWrite shuts down the writing side of the TCP connection. Most callers
+// should just use Close.
+//
+// A TCP Half-Close is performed the same as CloseWrite for *net.TCPConn.
+func (c *Conn) CloseWrite() error {
+	if terr := c.ep.Shutdown(tcpip.ShutdownWrite); terr != nil {
+		return c.newOpError("close", errors.New(terr.String()))
+	}
+	return nil
+}
+
 // LocalAddr implements net.Conn.LocalAddr.
 func (c *Conn) LocalAddr() net.Addr {
 	a, err := c.ep.GetLocalAddress()
@@ -524,7 +546,7 @@ func NewPacketConn(s *stack.Stack, addr tcpip.FullAddress, network tcpip.Network
 		return nil, errors.New(err.String())
 	}
 
-	if err := ep.Bind(addr, nil); err != nil {
+	if err := ep.Bind(addr); err != nil {
 		ep.Close()
 		return nil, &net.OpError{
 			Op:   "bind",
@@ -557,6 +579,21 @@ func (c *PacketConn) newRemoteOpError(op string, remote net.Addr, err error) *ne
 	}
 }
 
+// RemoteAddr implements net.Conn.RemoteAddr.
+func (c *PacketConn) RemoteAddr() net.Addr {
+	a, err := c.ep.GetRemoteAddress()
+	if err != nil {
+		return nil
+	}
+	return fullToTCPAddr(a)
+}
+
+// Read implements net.Conn.Read
+func (c *PacketConn) Read(b []byte) (int, error) {
+	bytesRead, _, err := c.ReadFrom(b)
+	return bytesRead, err
+}
+
 // ReadFrom implements net.PacketConn.ReadFrom.
 func (c *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	deadline := c.readCancel()
@@ -570,6 +607,10 @@ func (c *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	return copy(b, read), fullToUDPAddr(addr), nil
 }
 
+func (c *PacketConn) Write(b []byte) (int, error) {
+	return c.WriteTo(b, nil)
+}
+
 // WriteTo implements net.PacketConn.WriteTo.
 func (c *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	deadline := c.writeCancel()
@@ -581,13 +622,16 @@ func (c *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	default:
 	}
 
-	ua := addr.(*net.UDPAddr)
-	fullAddr := tcpip.FullAddress{Addr: tcpip.Address(ua.IP), Port: uint16(ua.Port)}
+	// If we're being called by Write, there is no addr
+	wopts := tcpip.WriteOptions{}
+	if addr != nil {
+		ua := addr.(*net.UDPAddr)
+		wopts.To = &tcpip.FullAddress{Addr: tcpip.Address(ua.IP), Port: uint16(ua.Port)}
+	}
 
 	v := buffer.NewView(len(b))
 	copy(v, b)
 
-	wopts := tcpip.WriteOptions{To: &fullAddr}
 	n, resCh, err := c.ep.Write(tcpip.SlicePayload(v), wopts)
 	if resCh != nil {
 		select {

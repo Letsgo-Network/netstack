@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
 	"github.com/FlowerWrong/netstack/tcpip/checker"
 	"github.com/FlowerWrong/netstack/tcpip/header"
 	"github.com/FlowerWrong/netstack/tcpip/network/ipv4"
@@ -113,7 +114,7 @@ func TestV4ConnectWhenBoundToWildcard(t *testing.T) {
 	c.CreateV6Endpoint(false)
 
 	// Bind to wildcard.
-	if err := c.EP.Bind(tcpip.FullAddress{}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -128,7 +129,7 @@ func TestV4ConnectWhenBoundToV4MappedWildcard(t *testing.T) {
 	c.CreateV6Endpoint(false)
 
 	// Bind to v4 mapped wildcard.
-	if err := c.EP.Bind(tcpip.FullAddress{Addr: context.V4MappedWildcardAddr}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Addr: context.V4MappedWildcardAddr}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -143,7 +144,7 @@ func TestV4ConnectWhenBoundToV4Mapped(t *testing.T) {
 	c.CreateV6Endpoint(false)
 
 	// Bind to v4 mapped address.
-	if err := c.EP.Bind(tcpip.FullAddress{Addr: context.StackV4MappedAddr}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Addr: context.StackV4MappedAddr}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -233,7 +234,7 @@ func TestV6ConnectWhenBoundToWildcard(t *testing.T) {
 	c.CreateV6Endpoint(false)
 
 	// Bind to wildcard.
-	if err := c.EP.Bind(tcpip.FullAddress{}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -248,7 +249,7 @@ func TestV6ConnectWhenBoundToLocalAddress(t *testing.T) {
 	c.CreateV6Endpoint(false)
 
 	// Bind to local address.
-	if err := c.EP.Bind(tcpip.FullAddress{Addr: context.StackV6Addr}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Addr: context.StackV6Addr}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -263,7 +264,7 @@ func TestV4RefuseOnV6Only(t *testing.T) {
 	c.CreateV6Endpoint(true)
 
 	// Bind to wildcard.
-	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -300,7 +301,7 @@ func TestV6RefuseOnBoundToV4Mapped(t *testing.T) {
 	c.CreateV6Endpoint(false)
 
 	// Bind and listen.
-	if err := c.EP.Bind(tcpip.FullAddress{Addr: context.V4MappedWildcardAddr, Port: context.StackPort}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Addr: context.V4MappedWildcardAddr, Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -330,6 +331,9 @@ func TestV6RefuseOnBoundToV4Mapped(t *testing.T) {
 }
 
 func testV4Accept(t *testing.T, c *context.Context) {
+	c.SetGSOEnabled(true)
+	defer c.SetGSOEnabled(false)
+
 	// Start listening.
 	if err := c.EP.Listen(10); err != nil {
 		t.Fatalf("Listen failed: %v", err)
@@ -406,6 +410,14 @@ func testV4Accept(t *testing.T, c *context.Context) {
 	if addr.Addr != context.TestAddr {
 		t.Fatalf("Unexpected remote address: got %v, want %v", addr.Addr, context.TestAddr)
 	}
+
+	data := "Don't panic"
+	nep.Write(tcpip.SlicePayload(buffer.NewViewFromBytes([]byte(data))), tcpip.WriteOptions{})
+	b = c.GetPacket()
+	tcp = header.TCP(header.IPv4(b).Payload())
+	if string(tcp.Payload()) != data {
+		t.Fatalf("Unexpected data: got %v, want %v", string(tcp.Payload()), data)
+	}
 }
 
 func TestV4AcceptOnV6(t *testing.T) {
@@ -415,7 +427,7 @@ func TestV4AcceptOnV6(t *testing.T) {
 	c.CreateV6Endpoint(false)
 
 	// Bind to wildcard.
-	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -430,7 +442,7 @@ func TestV4AcceptOnBoundToV4MappedWildcard(t *testing.T) {
 	c.CreateV6Endpoint(false)
 
 	// Bind to v4 mapped wildcard.
-	if err := c.EP.Bind(tcpip.FullAddress{Addr: context.V4MappedWildcardAddr, Port: context.StackPort}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Addr: context.V4MappedWildcardAddr, Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -445,7 +457,7 @@ func TestV4AcceptOnBoundToV4Mapped(t *testing.T) {
 	c.CreateV6Endpoint(false)
 
 	// Bind and listen.
-	if err := c.EP.Bind(tcpip.FullAddress{Addr: context.StackV4MappedAddr, Port: context.StackPort}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Addr: context.StackV4MappedAddr, Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -460,7 +472,7 @@ func TestV6AcceptOnV6(t *testing.T) {
 	c.CreateV6Endpoint(false)
 
 	// Bind and listen.
-	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -551,7 +563,7 @@ func TestV4AcceptOnV4(t *testing.T) {
 	}
 
 	// Bind to wildcard.
-	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}, nil); err != nil {
+	if err := c.EP.Bind(tcpip.FullAddress{Port: context.StackPort}); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 

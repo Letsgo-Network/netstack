@@ -59,8 +59,6 @@ package waiter
 
 import (
 	"sync"
-
-	"github.com/FlowerWrong/netstack/ilist"
 )
 
 // EventMask represents io events as used in the poll() syscall.
@@ -69,13 +67,27 @@ type EventMask uint16
 // Events that waiters can wait on. The meaning is the same as those in the
 // poll() syscall.
 const (
-	EventIn   EventMask = 0x01 // syscall.EPOLLIN
-	EventPri  EventMask = 0x02 // syscall.EPOLLPRI
-	EventOut  EventMask = 0x04 // syscall.EPOLLOUT
-	EventErr  EventMask = 0x08 // syscall.EPOLLERR
-	EventHUp  EventMask = 0x10 // syscall.EPOLLHUP
-	EventNVal EventMask = 0x20 // Not defined in syscall.
+	EventIn  EventMask = 0x01 // POLLIN
+	EventPri EventMask = 0x02 // POLLPRI
+	EventOut EventMask = 0x04 // POLLOUT
+	EventErr EventMask = 0x08 // POLLERR
+	EventHUp EventMask = 0x10 // POLLHUP
+
+	allEvents EventMask = 0x1f
 )
+
+// EventMaskFromLinux returns an EventMask representing the supported events
+// from the Linux events e, which is in the format used by poll(2).
+func EventMaskFromLinux(e uint32) EventMask {
+	// Our flag definitions are currently identical to Linux.
+	return EventMask(e) & allEvents
+}
+
+// ToLinux returns e in the format used by Linux poll(2).
+func (e EventMask) ToLinux() uint32 {
+	// Our flag definitions are currently identical to Linux.
+	return uint32(e)
+}
 
 // Waitable contains the methods that need to be implemented by waitable
 // objects.
@@ -127,7 +139,7 @@ type Entry struct {
 
 	// The following fields are protected by the queue lock.
 	mask EventMask
-	ilist.Entry
+	waiterEntry
 }
 
 type channelCallback struct{}
@@ -162,7 +174,7 @@ func NewChannelEntry(c chan struct{}) (Entry, chan struct{}) {
 //
 // +stateify savable
 type Queue struct {
-	list ilist.List
+	list waiterList
 	mu   sync.RWMutex
 }
 
@@ -186,8 +198,7 @@ func (q *Queue) EventUnregister(e *Entry) {
 // in common with the notification mask.
 func (q *Queue) Notify(mask EventMask) {
 	q.mu.RLock()
-	for it := q.list.Front(); it != nil; it = it.Next() {
-		e := it.(*Entry)
+	for e := q.list.Front(); e != nil; e = e.Next() {
 		if mask&e.mask != 0 {
 			e.Callback.Callback(e)
 		}
@@ -201,8 +212,7 @@ func (q *Queue) Events() EventMask {
 	ret := EventMask(0)
 
 	q.mu.RLock()
-	for it := q.list.Front(); it != nil; it = it.Next() {
-		e := it.(*Entry)
+	for e := q.list.Front(); e != nil; e = e.Next() {
 		ret |= e.mask
 	}
 	q.mu.RUnlock()

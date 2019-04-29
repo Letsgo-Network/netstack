@@ -129,6 +129,9 @@ type sender struct {
 	// It is initialized on demand.
 	maxPayloadSize int
 
+	// gso is set if generic segmentation offload is enabled.
+	gso bool
+
 	// sndWndScale is the number of bits to shift left when reading the send
 	// window size from a segment.
 	sndWndScale uint8
@@ -172,6 +175,11 @@ type fastRecovery struct {
 }
 
 func newSender(ep *endpoint, iss, irs seqnum.Value, sndWnd seqnum.Size, mss uint16, sndWndScale int) *sender {
+	// The sender MUST reduce the TCP data length to account for any IP or
+	// TCP options that it is including in the packets that it sends.
+	// See: https://tools.ietf.org/html/rfc6691#section-2
+	maxPayloadSize := int(mss) - ep.maxOptionSize()
+
 	s := &sender{
 		ep:               ep,
 		sndCwnd:          InitialCwnd,
@@ -183,12 +191,17 @@ func newSender(ep *endpoint, iss, irs seqnum.Value, sndWnd seqnum.Size, mss uint
 		rto:              1 * time.Second,
 		rttMeasureSeqNum: iss + 1,
 		lastSendTime:     time.Now(),
-		maxPayloadSize:   int(mss),
+		maxPayloadSize:   maxPayloadSize,
 		maxSentAck:       irs + 1,
 		fr: fastRecovery{
 			// See: https://tools.ietf.org/html/rfc6582#section-3.2 Step 1.
 			last: iss,
 		},
+		gso: ep.gso != nil,
+	}
+
+	if s.gso {
+		s.ep.gso.MSS = uint16(maxPayloadSize)
 	}
 
 	s.cc = s.initCongestionControl(ep.cc)
@@ -226,11 +239,7 @@ func (s *sender) initCongestionControl(congestionControlName CongestionControlOp
 func (s *sender) updateMaxPayloadSize(mtu, count int) {
 	m := mtu - header.TCPMinimumSize
 
-	// Calculate the maximum option size.
-	var maxSackBlocks [header.TCPMaxSACKBlocks]header.SACKBlock
-	options := s.ep.makeOptions(maxSackBlocks[:])
-	m -= len(options)
-	putOptions(options)
+	m -= s.ep.maxOptionSize()
 
 	// We don't adjust up for now.
 	if m >= s.maxPayloadSize {
@@ -243,6 +252,9 @@ func (s *sender) updateMaxPayloadSize(mtu, count int) {
 	}
 
 	s.maxPayloadSize = m
+	if s.gso {
+		s.ep.gso.MSS = uint16(m)
+	}
 
 	s.outstanding -= count
 	if s.outstanding < 0 {
@@ -273,7 +285,7 @@ func (s *sender) updateMaxPayloadSize(mtu, count int) {
 
 // sendAck sends an ACK segment.
 func (s *sender) sendAck() {
-	s.sendSegment(buffer.VectorisedView{}, flagAck, s.sndNxt)
+	s.sendSegment(buffer.VectorisedView{}, header.TCPFlagAck, s.sndNxt)
 }
 
 // updateRTO updates the retransmit timeout when a new roud-trip time is
@@ -337,7 +349,18 @@ func (s *sender) resendSegment() {
 
 	// Resend the segment.
 	if seg := s.writeList.Front(); seg != nil {
+		if seg.data.Size() > s.maxPayloadSize {
+			available := s.maxPayloadSize
+			// Split this segment up.
+			nSeg := seg.clone()
+			nSeg.data.TrimFront(available)
+			nSeg.sequenceNumber.UpdateForward(seqnum.Size(available))
+			s.writeList.InsertAfter(seg, nSeg)
+			seg.data.CapLength(available)
+		}
 		s.sendSegment(seg.data, seg.flags, seg.sequenceNumber)
+		s.ep.stack.Stats().TCP.FastRetransmit.Increment()
+		s.ep.stack.Stats().TCP.Retransmits.Increment()
 	}
 }
 
@@ -351,6 +374,8 @@ func (s *sender) retransmitTimerExpired() bool {
 	if !s.resendTimer.checkExpiration() {
 		return true
 	}
+
+	s.ep.stack.Stats().TCP.Timeouts.Increment()
 
 	// Give up if we've waited more than a minute since the last resend.
 	if s.rto >= 60*time.Second {
@@ -403,11 +428,24 @@ func (s *sender) retransmitTimerExpired() bool {
 	return true
 }
 
+// pCount returns the number of packets in the segment. Due to GSO, a segment
+// can be composed of multiple packets.
+func (s *sender) pCount(seg *segment) int {
+	size := seg.data.Size()
+	if size == 0 {
+		return 1
+	}
+
+	return (size-1)/s.maxPayloadSize + 1
+}
+
 // sendData sends new data segments. It is called when data becomes available or
 // when the send window opens up.
 func (s *sender) sendData() {
 	limit := s.maxPayloadSize
-
+	if s.gso {
+		limit = int(s.ep.gso.MaxSize - header.TCPHeaderMaximumSize)
+	}
 	// Reduce the congestion window to min(IW, cwnd) per RFC 5681, page 10.
 	// "A TCP SHOULD set cwnd to no more than RW before beginning
 	// transmission if the TCP has not sent data in the interval exceeding
@@ -422,7 +460,10 @@ func (s *sender) sendData() {
 	end := s.sndUna.Add(s.sndWnd)
 	var dataSent bool
 	for ; seg != nil && s.outstanding < s.sndCwnd; seg = seg.Next() {
-
+		cwndLimit := (s.sndCwnd - s.outstanding) * s.maxPayloadSize
+		if cwndLimit < limit {
+			limit = cwndLimit
+		}
 		// We abuse the flags field to determine if we have already
 		// assigned a sequence number to this segment.
 		if seg.flags == 0 {
@@ -480,7 +521,7 @@ func (s *sender) sendData() {
 			// Assign flags. We don't do it above so that we can merge
 			// additional data if Nagle holds the segment.
 			seg.sequenceNumber = s.sndNxt
-			seg.flags = flagAck | flagPsh
+			seg.flags = header.TCPFlagAck | header.TCPFlagPsh
 		}
 
 		var segEnd seqnum.Value
@@ -488,11 +529,11 @@ func (s *sender) sendData() {
 			if s.writeList.Back() != seg {
 				panic("FIN segments must be the final segment in the write list.")
 			}
-			seg.flags = flagAck | flagFin
+			seg.flags = header.TCPFlagAck | header.TCPFlagFin
 			segEnd = seg.sequenceNumber.Add(1)
 		} else {
 			// We're sending a non-FIN segment.
-			if seg.flags&flagFin != 0 {
+			if seg.flags&header.TCPFlagFin != 0 {
 				panic("Netstack queues FIN segments without data.")
 			}
 
@@ -514,7 +555,7 @@ func (s *sender) sendData() {
 				seg.data.CapLength(available)
 			}
 
-			s.outstanding++
+			s.outstanding += s.pCount(seg)
 			segEnd = seg.sequenceNumber.Add(seqnum.Size(seg.data.Size()))
 		}
 
@@ -524,6 +565,15 @@ func (s *sender) sendData() {
 			// ensure that no keepalives are sent while there is pending data.
 			s.ep.disableKeepaliveTimer()
 		}
+
+		if !seg.xmitTime.IsZero() {
+			s.ep.stack.Stats().TCP.Retransmits.Increment()
+			if s.sndCwnd < s.sndSsthresh {
+				s.ep.stack.Stats().TCP.SlowStartRetransmits.Increment()
+			}
+		}
+
+		seg.xmitTime = time.Now()
 		s.sendSegment(seg.data, seg.flags, seg.sequenceNumber)
 
 		// Update sndNxt if we actually sent new data (as opposed to
@@ -556,6 +606,7 @@ func (s *sender) enterFastRecovery() {
 	s.fr.first = s.sndUna
 	s.fr.last = s.sndNxt - 1
 	s.fr.maxCwnd = s.sndCwnd + s.outstanding
+	s.ep.stack.Stats().TCP.FastRecovery.Increment()
 }
 
 func (s *sender) leaveFastRecovery() {
@@ -730,7 +781,10 @@ func (s *sender) handleRcvdSegment(seg *segment) {
 			datalen := seg.logicalLen()
 
 			if datalen > ackLeft {
+				prevCount := s.pCount(seg)
 				seg.data.TrimFront(int(ackLeft))
+				seg.sequenceNumber.UpdateForward(ackLeft)
+				s.outstanding -= prevCount - s.pCount(seg)
 				break
 			}
 
@@ -738,7 +792,7 @@ func (s *sender) handleRcvdSegment(seg *segment) {
 				s.writeNext = seg.Next()
 			}
 			s.writeList.Remove(seg)
-			s.outstanding--
+			s.outstanding -= s.pCount(seg)
 			seg.decRef()
 			ackLeft -= datalen
 		}

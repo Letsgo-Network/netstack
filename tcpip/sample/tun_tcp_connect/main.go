@@ -137,7 +137,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	linkID := fdbased.New(&fdbased.Options{FD: fd, MTU: mtu})
+	linkID, err := fdbased.New(&fdbased.Options{FD: fd, MTU: mtu})
+	if err != nil {
+		log.Fatal(err)
+	}
 	if err := s.CreateNIC(1, sniffer.New(linkID)); err != nil {
 		log.Fatal(err)
 	}
@@ -165,7 +168,7 @@ func main() {
 
 	// Bind if a port is specified.
 	if localPort != 0 {
-		if err := ep.Bind(tcpip.FullAddress{0, "", localPort}, nil); err != nil {
+		if err := ep.Bind(tcpip.FullAddress{0, "", localPort}); err != nil {
 			log.Fatal("Bind failed: ", err)
 		}
 	}
