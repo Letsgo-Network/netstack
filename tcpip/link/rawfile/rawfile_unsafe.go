@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build linux
+// +build linux darwin
 
 // Package rawfile contains utilities for using the netstack with raw host
 // files on Linux hosts.
@@ -164,19 +164,20 @@ type MMsgHdr struct {
 // is available, it will block in a poll() syscall until the file descriptor
 // becomes readable.
 func BlockingRecvMMsg(fd int, msgHdrs []MMsgHdr) (int, *tcpip.Error) {
-	for {
-		n, _, e := syscall.RawSyscall6(syscall.SYS_RECVMMSG, uintptr(fd), uintptr(unsafe.Pointer(&msgHdrs[0])), uintptr(len(msgHdrs)), syscall.MSG_DONTWAIT, 0, 0)
-		if e == 0 {
-			return int(n), nil
-		}
-
-		event := PollEvent{
-			FD:     int32(fd),
-			Events: 1, // POLLIN
-		}
-
-		if _, e := BlockingPoll(&event, 1, nil); e != 0 && e != syscall.EINTR {
-			return 0, TranslateErrno(e)
-		}
-	}
+	//for {
+	//	n, _, e := syscall.RawSyscall6(syscall.SYS_RECVMMSG, uintptr(fd), uintptr(unsafe.Pointer(&msgHdrs[0])), uintptr(len(msgHdrs)), syscall.MSG_DONTWAIT, 0, 0)
+	//	if e == 0 {
+	//		return int(n), nil
+	//	}
+	//
+	//	event := PollEvent{
+	//		FD:     int32(fd),
+	//		Events: 1, // POLLIN
+	//	}
+	//
+	//	if _, e := BlockingPoll(&event, 1, nil); e != 0 && e != syscall.EINTR {
+	//		return 0, TranslateErrno(e)
+	//	}
+	//}
+	return 0, tcpip.ErrInvalidOptionValue
 }

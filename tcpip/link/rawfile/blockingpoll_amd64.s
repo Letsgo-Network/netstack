@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// +build linux,amd64
+
 #include "textflag.h"
 
 // BlockingPoll makes the ppoll() syscall while calling the version of

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build linux,!amd64,!arm64
+// +build linux,!amd64,!arm64 darwin
 
 package rawfile
 
@@ -24,8 +24,7 @@ import (
 // BlockingPoll is just a stub function that forwards to the ppoll() system call
 // on non-amd64 and non-arm64 platforms.
 func BlockingPoll(fds *PollEvent, nfds int, timeout *syscall.Timespec) (int, syscall.Errno) {
-	n, _, e := syscall.Syscall6(syscall.SYS_PPOLL, uintptr(unsafe.Pointer(fds)),
-		uintptr(nfds), uintptr(unsafe.Pointer(timeout)), 0, 0, 0)
+	n, _, e := syscall.Syscall(syscall.SYS_POLL, uintptr(unsafe.Pointer(fds)), uintptr(nfds), uintptr(unsafe.Pointer(timeout)))
 
 	return int(n), e
 }
