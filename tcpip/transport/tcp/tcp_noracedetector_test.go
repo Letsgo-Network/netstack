@@ -26,11 +26,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/transport/tcp"
-	"github.com/google/netstack/tcpip/transport/tcp/testing/context"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/tcpip/transport/tcp"
+	"github.com/FlowerWrong/netstack/tcpip/transport/tcp/testing/context"
 )
 
 func DisabledTestFastRecovery(t *testing.T) {

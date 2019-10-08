@@ -15,9 +15,9 @@
 package raw
 
 import (
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/stack"
-	"github.com/google/netstack/waiter"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/stack"
+	"github.com/FlowerWrong/netstack/waiter"
 )
 
 // EndpointFactory implements stack.UnassociatedEndpointFactory.

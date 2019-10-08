@@ -19,7 +19,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/google/netstack/tcpip/link/sharedmem/pipe"
+	"github.com/FlowerWrong/netstack/tcpip/link/sharedmem/pipe"
 )
 
 func TestBasicTxQueue(t *testing.T) {

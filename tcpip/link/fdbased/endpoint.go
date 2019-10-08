@@ -44,11 +44,11 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/link/rawfile"
-	"github.com/google/netstack/tcpip/stack"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/tcpip/link/rawfile"
+	"github.com/FlowerWrong/netstack/tcpip/stack"
 	"golang.org/x/sys/unix"
 )
 

@@ -19,10 +19,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/google/netstack/ilist"
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/ilist"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/tcpip/header"
 )
 
 // NIC represents a "network interface card" to which the networking stack is

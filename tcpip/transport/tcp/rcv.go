@@ -18,8 +18,8 @@ import (
 	"container/heap"
 	"time"
 
-	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/seqnum"
+	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/tcpip/seqnum"
 )
 
 // receiver holds the state necessary to receive TCP segments and turn them

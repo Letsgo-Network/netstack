@@ -17,12 +17,12 @@ package udp
 import (
 	"sync"
 
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/iptables"
-	"github.com/google/netstack/tcpip/stack"
-	"github.com/google/netstack/waiter"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/tcpip/iptables"
+	"github.com/FlowerWrong/netstack/tcpip/stack"
+	"github.com/FlowerWrong/netstack/waiter"
 )
 
 // +stateify savable

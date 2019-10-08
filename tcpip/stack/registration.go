@@ -15,10 +15,10 @@
 package stack
 
 import (
-	"github.com/google/netstack/sleep"
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/waiter"
+	"github.com/FlowerWrong/netstack/sleep"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/waiter"
 )
 
 // NetworkEndpointID is the identifier of a network layer protocol endpoint.

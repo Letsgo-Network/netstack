@@ -50,17 +50,17 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/link/fdbased"
-	"github.com/google/netstack/tcpip/link/rawfile"
-	"github.com/google/netstack/tcpip/link/sniffer"
-	"github.com/google/netstack/tcpip/link/tun"
-	"github.com/google/netstack/tcpip/network/ipv4"
-	"github.com/google/netstack/tcpip/stack"
-	"github.com/google/netstack/tcpip/transport/tcp"
-	"github.com/google/netstack/waiter"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/tcpip/link/fdbased"
+	"github.com/FlowerWrong/netstack/tcpip/link/rawfile"
+	"github.com/FlowerWrong/netstack/tcpip/link/sniffer"
+	"github.com/FlowerWrong/netstack/tcpip/link/tun"
+	"github.com/FlowerWrong/netstack/tcpip/network/ipv4"
+	"github.com/FlowerWrong/netstack/tcpip/stack"
+	"github.com/FlowerWrong/netstack/tcpip/transport/tcp"
+	"github.com/FlowerWrong/netstack/waiter"
 )
 
 // writer reads from standard input and writes to the endpoint until standard

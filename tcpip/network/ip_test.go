@@ -17,15 +17,15 @@ package ip_test
 import (
 	"testing"
 
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/link/loopback"
-	"github.com/google/netstack/tcpip/network/ipv4"
-	"github.com/google/netstack/tcpip/network/ipv6"
-	"github.com/google/netstack/tcpip/stack"
-	"github.com/google/netstack/tcpip/transport/tcp"
-	"github.com/google/netstack/tcpip/transport/udp"
+	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/tcpip/link/loopback"
+	"github.com/FlowerWrong/netstack/tcpip/network/ipv4"
+	"github.com/FlowerWrong/netstack/tcpip/network/ipv6"
+	"github.com/FlowerWrong/netstack/tcpip/stack"
+	"github.com/FlowerWrong/netstack/tcpip/transport/tcp"
+	"github.com/FlowerWrong/netstack/tcpip/transport/udp"
 )
 
 const (

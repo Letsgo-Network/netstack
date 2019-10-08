@@ -19,8 +19,8 @@ import (
 	"strings"
 
 	"github.com/google/btree"
-	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/seqnum"
+	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/FlowerWrong/netstack/tcpip/seqnum"
 )
 
 const (
