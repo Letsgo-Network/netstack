@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build linux
+// +build linux, darwin
 
 package fdbased
 
@@ -182,32 +182,6 @@ const (
 	// in a single RecvMMsg call.
 	MaxMsgsPerRecv = 8
 )
-
-func newRecvMMsgDispatcher(fd int, e *endpoint) (linkDispatcher, error) {
-	d := &recvMMsgDispatcher{
-		fd: fd,
-		e:  e,
-	}
-	d.views = make([][]buffer.View, MaxMsgsPerRecv)
-	for i := range d.views {
-		d.views[i] = make([]buffer.View, len(BufConfig))
-	}
-	d.iovecs = make([][]syscall.Iovec, MaxMsgsPerRecv)
-	iovLen := len(BufConfig)
-	if d.e.Capabilities()&stack.CapabilityGSO != 0 {
-		// virtioNetHdr is prepended before each packet.
-		iovLen++
-	}
-	for i := range d.iovecs {
-		d.iovecs[i] = make([]syscall.Iovec, iovLen)
-	}
-	d.msgHdrs = make([]rawfile.MMsgHdr, MaxMsgsPerRecv)
-	for i := range d.msgHdrs {
-		d.msgHdrs[i].Msg.Iov = &d.iovecs[i][0]
-		d.msgHdrs[i].Msg.Iovlen = uint64(iovLen)
-	}
-	return d, nil
-}
 
 func (d *recvMMsgDispatcher) capViews(k, n int, buffers []int) int {
 	c := 0

@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build linux
-
 // Package fdbased provides the implemention of data-link layer endpoints
 // backed by boundary-preserving file descriptors (e.g., TUN devices,
 // seqpacket/datagram sockets).
@@ -262,15 +260,15 @@ func createInboundDispatcher(e *endpoint, fd int, isSocket bool) (linkDispatcher
 			return nil, fmt.Errorf("unix.Getsockname(%d) = %v", fd, err)
 		}
 		switch sa.(type) {
-		case *unix.SockaddrLinklayer:
-			// enable PACKET_FANOUT mode is the underlying socket is
-			// of type AF_PACKET.
-			const fanoutID = 1
-			const fanoutType = 0x8000 // PACKET_FANOUT_HASH | PACKET_FANOUT_FLAG_DEFRAG
-			fanoutArg := fanoutID | fanoutType<<16
-			if err := syscall.SetsockoptInt(fd, syscall.SOL_PACKET, unix.PACKET_FANOUT, fanoutArg); err != nil {
-				return nil, fmt.Errorf("failed to enable PACKET_FANOUT option: %v", err)
-			}
+		//case *unix.SockaddrLinklayer:
+		//	// enable PACKET_FANOUT mode is the underlying socket is
+		//	// of type AF_PACKET.
+		//	const fanoutID = 1
+		//	const fanoutType = 0x8000 // PACKET_FANOUT_HASH | PACKET_FANOUT_FLAG_DEFRAG
+		//	fanoutArg := fanoutID | fanoutType<<16
+		//	if err := syscall.SetsockoptInt(fd, syscall.SOL_PACKET, unix.PACKET_FANOUT, fanoutArg); err != nil {
+		//		return nil, fmt.Errorf("failed to enable PACKET_FANOUT option: %v", err)
+		//	}
 		}
 
 		switch e.packetDispatchMode {
