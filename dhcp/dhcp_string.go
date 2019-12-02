@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip"
 )
 
 func (h header) String() string {

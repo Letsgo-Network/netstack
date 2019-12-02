@@ -3,8 +3,8 @@ package rawfile
 import (
 	"log"
 
-	"github.com/FlowerWrong/netstack/tcpip"
-	"github.com/FlowerWrong/water"
+	"github.com/Letsgo-Network/netstack/tcpip"
+	"github.com/Letsgo-Network/water"
 )
 
 // Read from tun device, support OSX, linux and windows

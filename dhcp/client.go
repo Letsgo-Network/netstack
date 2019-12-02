@@ -22,11 +22,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlowerWrong/netstack/tcpip"
-	"github.com/FlowerWrong/netstack/tcpip/network/ipv4"
-	"github.com/FlowerWrong/netstack/tcpip/stack"
-	"github.com/FlowerWrong/netstack/tcpip/transport/udp"
-	"github.com/FlowerWrong/netstack/waiter"
+	"github.com/Letsgo-Network/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip/network/ipv4"
+	"github.com/Letsgo-Network/netstack/tcpip/stack"
+	"github.com/Letsgo-Network/netstack/tcpip/transport/udp"
+	"github.com/Letsgo-Network/netstack/waiter"
 )
 
 // Client is a DHCP client.

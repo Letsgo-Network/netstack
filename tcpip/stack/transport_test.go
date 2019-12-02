@@ -17,11 +17,11 @@ package stack_test
 import (
 	"testing"
 
-	"github.com/FlowerWrong/netstack/tcpip"
-	"github.com/FlowerWrong/netstack/tcpip/buffer"
-	"github.com/FlowerWrong/netstack/tcpip/link/channel"
-	"github.com/FlowerWrong/netstack/tcpip/stack"
-	"github.com/FlowerWrong/netstack/waiter"
+	"github.com/Letsgo-Network/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip/buffer"
+	"github.com/Letsgo-Network/netstack/tcpip/link/channel"
+	"github.com/Letsgo-Network/netstack/tcpip/stack"
+	"github.com/Letsgo-Network/netstack/waiter"
 )
 
 const (

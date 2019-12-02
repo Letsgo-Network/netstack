@@ -21,9 +21,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/FlowerWrong/netstack/tcpip"
-	"github.com/FlowerWrong/netstack/tcpip/header"
-	"github.com/FlowerWrong/netstack/tcpip/seqnum"
+	"github.com/Letsgo-Network/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip/header"
+	"github.com/Letsgo-Network/netstack/tcpip/seqnum"
 )
 
 // NetworkChecker is a function to check a property of a network packet.

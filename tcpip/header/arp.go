@@ -14,7 +14,7 @@
 
 package header
 
-import "github.com/FlowerWrong/netstack/tcpip"
+import "github.com/Letsgo-Network/netstack/tcpip"
 
 const (
 	// ARPProtocolNumber is the ARP network protocol number.

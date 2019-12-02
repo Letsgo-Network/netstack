@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/FlowerWrong/netstack/gate"
+	"github.com/Letsgo-Network/netstack/gate"
 )
 
 func TestBasicEnter(t *testing.T) {

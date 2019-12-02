@@ -17,10 +17,10 @@ package tcp
 import (
 	"sync/atomic"
 
-	"github.com/FlowerWrong/netstack/tcpip/buffer"
-	"github.com/FlowerWrong/netstack/tcpip/header"
-	"github.com/FlowerWrong/netstack/tcpip/seqnum"
-	"github.com/FlowerWrong/netstack/tcpip/stack"
+	"github.com/Letsgo-Network/netstack/tcpip/buffer"
+	"github.com/Letsgo-Network/netstack/tcpip/header"
+	"github.com/Letsgo-Network/netstack/tcpip/seqnum"
+	"github.com/Letsgo-Network/netstack/tcpip/stack"
 )
 
 // Flags that may be set in a TCP segment.
