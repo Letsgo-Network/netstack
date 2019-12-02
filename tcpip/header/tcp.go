@@ -17,8 +17,8 @@ package header
 import (
 	"encoding/binary"
 
-	"github.com/FlowerWrong/netstack/tcpip"
-	"github.com/FlowerWrong/netstack/tcpip/seqnum"
+	"github.com/Letsgo-Network/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip/seqnum"
 	"github.com/google/btree"
 )
 

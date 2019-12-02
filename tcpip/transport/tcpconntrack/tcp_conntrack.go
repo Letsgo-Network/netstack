@@ -18,8 +18,8 @@
 package tcpconntrack
 
 import (
-	"github.com/FlowerWrong/netstack/tcpip/header"
-	"github.com/FlowerWrong/netstack/tcpip/seqnum"
+	"github.com/Letsgo-Network/netstack/tcpip/header"
+	"github.com/Letsgo-Network/netstack/tcpip/seqnum"
 )
 
 // Result is returned when the state of a TCB is updated in response to an

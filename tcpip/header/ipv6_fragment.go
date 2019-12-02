@@ -17,7 +17,7 @@ package header
 import (
 	"encoding/binary"
 
-	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip"
 )
 
 const (

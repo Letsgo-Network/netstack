@@ -18,7 +18,7 @@ import (
 	"container/heap"
 	"fmt"
 
-	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/Letsgo-Network/netstack/tcpip/buffer"
 )
 
 type fragment struct {

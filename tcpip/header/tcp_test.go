@@ -18,7 +18,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/Letsgo-Network/netstack/tcpip/header"
 )
 
 func TestEncodeSACKBlocks(t *testing.T) {
