@@ -19,8 +19,8 @@ package header
 import (
 	"encoding/binary"
 
-	"github.com/FlowerWrong/netstack/tcpip"
-	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/Letsgo-Network/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip/buffer"
 )
 
 func calculateChecksum(buf []byte, initial uint32) uint16 {

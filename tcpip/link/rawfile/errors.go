@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"syscall"
 
-	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip"
 )
 
 const maxErrno = 134

@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlowerWrong/netstack/sleep"
-	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/sleep"
+	"github.com/Letsgo-Network/netstack/tcpip"
 )
 
 const linkAddrCacheSize = 512 // max cache entries

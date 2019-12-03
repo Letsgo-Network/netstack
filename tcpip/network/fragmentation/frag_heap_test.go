@@ -19,7 +19,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/FlowerWrong/netstack/tcpip/buffer"
+	"github.com/Letsgo-Network/netstack/tcpip/buffer"
 )
 
 var reassambleTestCases = []struct {

@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/FlowerWrong/netstack/tcpip/header"
-	"github.com/FlowerWrong/netstack/tcpip/seqnum"
+	"github.com/Letsgo-Network/netstack/tcpip/header"
+	"github.com/Letsgo-Network/netstack/tcpip/seqnum"
 	"github.com/google/btree"
 )
 

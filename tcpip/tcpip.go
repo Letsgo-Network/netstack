@@ -38,8 +38,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/FlowerWrong/netstack/tcpip/buffer"
-	"github.com/FlowerWrong/netstack/waiter"
+	"github.com/Letsgo-Network/netstack/tcpip/buffer"
+	"github.com/Letsgo-Network/netstack/waiter"
 )
 
 // Error represents an error in the netstack error space. Using a special type

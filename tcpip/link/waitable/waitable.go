@@ -22,10 +22,10 @@
 package waitable
 
 import (
-	"github.com/FlowerWrong/netstack/gate"
-	"github.com/FlowerWrong/netstack/tcpip"
-	"github.com/FlowerWrong/netstack/tcpip/buffer"
-	"github.com/FlowerWrong/netstack/tcpip/stack"
+	"github.com/Letsgo-Network/netstack/gate"
+	"github.com/Letsgo-Network/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip/buffer"
+	"github.com/Letsgo-Network/netstack/tcpip/stack"
 )
 
 // Endpoint is a waitable link-layer endpoint.

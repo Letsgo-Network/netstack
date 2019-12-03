@@ -20,8 +20,8 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/FlowerWrong/netstack/tcpip/link/rawfile"
-	"github.com/FlowerWrong/netstack/tcpip/link/sharedmem/queue"
+	"github.com/Letsgo-Network/netstack/tcpip/link/rawfile"
+	"github.com/Letsgo-Network/netstack/tcpip/link/sharedmem/queue"
 )
 
 // rx holds all state associated with an rx queue.

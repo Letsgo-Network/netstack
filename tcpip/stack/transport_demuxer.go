@@ -19,10 +19,10 @@ import (
 	"math/rand"
 	"sync"
 
-	"github.com/FlowerWrong/netstack/tcpip"
-	"github.com/FlowerWrong/netstack/tcpip/buffer"
-	"github.com/FlowerWrong/netstack/tcpip/hash/jenkins"
-	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/Letsgo-Network/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip/buffer"
+	"github.com/Letsgo-Network/netstack/tcpip/hash/jenkins"
+	"github.com/Letsgo-Network/netstack/tcpip/header"
 )
 
 type protocolIDs struct {

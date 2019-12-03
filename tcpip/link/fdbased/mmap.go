@@ -16,7 +16,7 @@
 
 package fdbased
 
-import "github.com/FlowerWrong/netstack/tcpip"
+import "github.com/Letsgo-Network/netstack/tcpip"
 
 // Stubbed out versions for non-linux/non-amd64 platforms.
 

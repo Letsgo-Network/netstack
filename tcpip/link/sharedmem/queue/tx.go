@@ -17,7 +17,7 @@ package queue
 import (
 	"encoding/binary"
 
-	"github.com/FlowerWrong/netstack/tcpip/link/sharedmem/pipe"
+	"github.com/Letsgo-Network/netstack/tcpip/link/sharedmem/pipe"
 	"log"
 )
 

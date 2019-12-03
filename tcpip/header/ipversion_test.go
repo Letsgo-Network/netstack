@@ -17,7 +17,7 @@ package header_test
 import (
 	"testing"
 
-	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/Letsgo-Network/netstack/tcpip/header"
 )
 
 func TestIPv4(t *testing.T) {
