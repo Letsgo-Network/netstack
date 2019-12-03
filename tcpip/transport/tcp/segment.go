@@ -18,10 +18,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/FlowerWrong/netstack/tcpip/buffer"
-	"github.com/FlowerWrong/netstack/tcpip/header"
-	"github.com/FlowerWrong/netstack/tcpip/seqnum"
-	"github.com/FlowerWrong/netstack/tcpip/stack"
+	"github.com/Letsgo-Network/netstack/tcpip/buffer"
+	"github.com/Letsgo-Network/netstack/tcpip/header"
+	"github.com/Letsgo-Network/netstack/tcpip/seqnum"
+	"github.com/Letsgo-Network/netstack/tcpip/stack"
 )
 
 // segment represents a TCP segment. It holds the payload and parsed TCP segment

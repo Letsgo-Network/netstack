@@ -20,8 +20,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/FlowerWrong/netstack/sleep"
-	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/sleep"
+	"github.com/Letsgo-Network/netstack/tcpip"
 )
 
 type testaddr struct {

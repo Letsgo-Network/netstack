@@ -28,11 +28,11 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/FlowerWrong/netstack/tcpip"
-	"github.com/FlowerWrong/netstack/tcpip/buffer"
-	"github.com/FlowerWrong/netstack/tcpip/header"
-	"github.com/FlowerWrong/netstack/tcpip/link/sharedmem/queue"
-	"github.com/FlowerWrong/netstack/tcpip/stack"
+	"github.com/Letsgo-Network/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip/buffer"
+	"github.com/Letsgo-Network/netstack/tcpip/header"
+	"github.com/Letsgo-Network/netstack/tcpip/link/sharedmem/queue"
+	"github.com/Letsgo-Network/netstack/tcpip/stack"
 )
 
 // QueueConfig holds all the file descriptors needed to describe a tx or rx

@@ -17,7 +17,7 @@ package ports
 import (
 	"testing"
 
-	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip"
 )
 
 const (

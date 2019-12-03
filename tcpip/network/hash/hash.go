@@ -18,8 +18,8 @@ package hash
 import (
 	"encoding/binary"
 
-	"github.com/FlowerWrong/netstack/rand"
-	"github.com/FlowerWrong/netstack/tcpip/header"
+	"github.com/Letsgo-Network/netstack/rand"
+	"github.com/Letsgo-Network/netstack/tcpip/header"
 )
 
 var hashIV = RandN32(1)[0]

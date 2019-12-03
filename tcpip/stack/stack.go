@@ -28,13 +28,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlowerWrong/netstack/sleep"
-	"github.com/FlowerWrong/netstack/tcpip"
-	"github.com/FlowerWrong/netstack/tcpip/buffer"
-	"github.com/FlowerWrong/netstack/tcpip/header"
-	"github.com/FlowerWrong/netstack/tcpip/ports"
-	"github.com/FlowerWrong/netstack/tcpip/seqnum"
-	"github.com/FlowerWrong/netstack/waiter"
+	"github.com/Letsgo-Network/netstack/sleep"
+	"github.com/Letsgo-Network/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip/buffer"
+	"github.com/Letsgo-Network/netstack/tcpip/header"
+	"github.com/Letsgo-Network/netstack/tcpip/ports"
+	"github.com/Letsgo-Network/netstack/tcpip/seqnum"
+	"github.com/Letsgo-Network/netstack/waiter"
 )
 
 const (

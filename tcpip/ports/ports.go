@@ -20,7 +20,7 @@ import (
 	"math/rand"
 	"sync"
 
-	"github.com/FlowerWrong/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip"
 )
 
 const (

@@ -21,15 +21,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/FlowerWrong/netstack/rand"
-	"github.com/FlowerWrong/netstack/sleep"
-	"github.com/FlowerWrong/netstack/tcpip"
-	"github.com/FlowerWrong/netstack/tcpip/buffer"
-	"github.com/FlowerWrong/netstack/tcpip/header"
-	"github.com/FlowerWrong/netstack/tcpip/seqnum"
-	"github.com/FlowerWrong/netstack/tcpip/stack"
-	"github.com/FlowerWrong/netstack/tmutex"
-	"github.com/FlowerWrong/netstack/waiter"
+	"github.com/Letsgo-Network/netstack/rand"
+	"github.com/Letsgo-Network/netstack/sleep"
+	"github.com/Letsgo-Network/netstack/tcpip"
+	"github.com/Letsgo-Network/netstack/tcpip/buffer"
+	"github.com/Letsgo-Network/netstack/tcpip/header"
+	"github.com/Letsgo-Network/netstack/tcpip/seqnum"
+	"github.com/Letsgo-Network/netstack/tcpip/stack"
+	"github.com/Letsgo-Network/netstack/tmutex"
+	"github.com/Letsgo-Network/netstack/waiter"
 )
 
 type endpointState int
@@ -663,6 +663,12 @@ func (e *endpoint) Peek(vec [][]byte) (uintptr, tcpip.ControlMessages, *tcpip.Er
 func (e *endpoint) zeroReceiveWindow(scale uint8) bool {
 	if e.rcvBufUsed >= e.rcvBufSize {
 		return true
+	}
+
+	if freeSpace := e.rcvBufSize - e.rcvBufUsed; freeSpace < (e.rcvBufSize >> 1) {
+		if freeSpace < (e.rcvBufSize >> 4) || freeSpace < 2048 {
+			return true
+		}
 	}
 
 	return ((e.rcvBufSize - e.rcvBufUsed) >> scale) == 0
