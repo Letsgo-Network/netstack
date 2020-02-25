@@ -1035,13 +1035,15 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 		e.workMu.Unlock()
 		v, _ := s.Fetch(true)
 		e.workMu.Lock()
-		if err := funcs[v].f(); err != nil {
-			e.mu.Lock()
-			e.resetConnectionLocked(err)
-			// Lock released below.
-			epilogue()
+		if v >= 0 && v < len(funcs) && funcs[v].f != nil {
+			if err := funcs[v].f(); err != nil {
+				e.mu.Lock()
+				e.resetConnectionLocked(err)
+				// Lock released below.
+				epilogue()
 
-			return nil
+				return nil
+			}
 		}
 	}
 
