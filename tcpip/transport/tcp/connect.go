@@ -1031,18 +1031,21 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 
 	// Main loop. Handle segments until both send and receive ends of the
 	// connection have completed.
+	var f func() *tcpip.Error
 	for !e.rcv.closed || !e.snd.closed || e.snd.sndUna != e.snd.sndNxtList {
 		e.workMu.Unlock()
 		v, _ := s.Fetch(true)
 		e.workMu.Lock()
-		if v >= 0 && v < len(funcs) && funcs[v].f != nil {
-			if err := funcs[v].f(); err != nil {
-				e.mu.Lock()
-				e.resetConnectionLocked(err)
-				// Lock released below.
-				epilogue()
+		if funcs != nil && v >= 0 && v < len(funcs) {
+			if f = funcs[v].f; f != nil {
+				if err := f(); err != nil {
+					e.mu.Lock()
+					e.resetConnectionLocked(err)
+					// Lock released below.
+					epilogue()
 
-				return nil
+					return nil
+				}
 			}
 		}
 	}
