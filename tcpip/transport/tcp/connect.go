@@ -1034,6 +1034,10 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 		if v >= 0 && v < len(funcs) && funcs[v].f != nil {
 			if err := funcs[v].f(); err != nil {
 				e.mu.Lock()
+				// Ensure we release all endpoint registration and route
+				// references as the connection is now in an error
+				// state.
+				e.workerCleanup = true
 				e.resetConnectionLocked(err)
 				// Lock released below.
 				epilogue()
