@@ -494,7 +494,9 @@ func (s *sender) sendData() {
 					seg.data.Append(seg.Next().data)
 
 					// Consume the segment that we just merged in.
-					s.writeList.Remove(seg.Next())
+					segNext := seg.Next()
+					s.writeList.Remove(segNext)
+					segNext.decRef()
 				}
 
 				if !nextTooBig && seg.data.Size() < available {

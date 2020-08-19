@@ -61,22 +61,20 @@ type segment struct {
 }
 
 func newSegment(r *stack.Route, id stack.TransportEndpointID, vv buffer.VectorisedView) *segment {
-	s := &segment{
-		refCnt: 1,
-		id:     id,
-		route:  r.Clone(),
-	}
+	s := sb.newSeg()
+	s.refCnt = 1
+	s.id = id
+	s.route = r.Clone()
 	s.data = vv.Clone(s.views[:])
 	s.rcvdTime = time.Now()
 	return s
 }
 
 func newSegmentFromView(r *stack.Route, id stack.TransportEndpointID, v buffer.View) *segment {
-	s := &segment{
-		refCnt: 1,
-		id:     id,
-		route:  r.Clone(),
-	}
+	s := sb.newSeg()
+	s.refCnt = 1
+	s.id = id
+	s.route = r.Clone()
 	s.views[0] = v
 	s.data = buffer.NewVectorisedView(len(v), s.views[:1])
 	s.rcvdTime = time.Now()
@@ -84,17 +82,16 @@ func newSegmentFromView(r *stack.Route, id stack.TransportEndpointID, v buffer.V
 }
 
 func (s *segment) clone() *segment {
-	t := &segment{
-		refCnt:         1,
-		id:             s.id,
-		sequenceNumber: s.sequenceNumber,
-		ackNumber:      s.ackNumber,
-		flags:          s.flags,
-		window:         s.window,
-		route:          s.route.Clone(),
-		viewToDeliver:  s.viewToDeliver,
-		rcvdTime:       s.rcvdTime,
-	}
+	t := sb.newSeg()
+	t.refCnt = 1
+	t.id = s.id
+	t.sequenceNumber = s.sequenceNumber
+	t.ackNumber = s.ackNumber
+	t.flags = s.flags
+	t.window = s.window
+	t.route = s.route.Clone()
+	t.viewToDeliver = s.viewToDeliver
+	t.rcvdTime = s.rcvdTime
 	t.data = s.data.Clone(t.views[:])
 	return t
 }
@@ -106,6 +103,7 @@ func (s *segment) flagIsSet(flag uint8) bool {
 func (s *segment) decRef() {
 	if atomic.AddInt32(&s.refCnt, -1) == 0 {
 		s.route.Release()
+		sb.putSeg(s)
 	}
 }
 

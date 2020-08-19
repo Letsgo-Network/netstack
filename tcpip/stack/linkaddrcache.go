@@ -23,7 +23,7 @@ import (
 	"github.com/Letsgo-Network/netstack/tcpip"
 )
 
-const linkAddrCacheSize = 512 // max cache entries
+const linkAddrCacheSize = 32 // max cache entries
 
 // linkAddrCache is a fixed-sized cache mapping IP addresses to link addresses.
 //

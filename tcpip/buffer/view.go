@@ -20,13 +20,26 @@ type View []byte
 
 // NewView allocates a new buffer and returns an initialized view that covers
 // the whole buffer.
-func NewView(size int) View {
-	return make(View, size)
+func NewView(size int) (v View) {
+	v = nil
+	//println(size)
+	if size <= lb.maxBlockSize() {
+		v = View(lb.getView(size))
+	}
+	if v == nil {
+		v = make(View, size)
+		println("oooooooooooooooooooooops1")
+	} else {
+		v = View(v[:size])
+	}
+	return
 }
 
 // NewViewFromBytes allocates a new buffer and copies in the given bytes.
 func NewViewFromBytes(b []byte) View {
-	return append(View(nil), b...)
+	//println(">>>>>>>>>>>> ", len(b))
+	v := NewView(len(b))
+	return append(v[:0], b...)
 }
 
 // TrimFront removes the first "count" bytes from the visible section of the
@@ -106,6 +119,12 @@ func (vv *VectorisedView) CapLength(length int) {
 // If the buffer argument is large enough to contain all the Views of this VectorisedView,
 // the method will avoid allocations and use the buffer to store the Views of the clone.
 func (vv VectorisedView) Clone(buffer []View) VectorisedView {
+	if len(vv.views) > len(buffer) && len(vv.views) <= lb.viewArrSize() {
+		buffer = lb.getViewArr()
+	}
+	if len(vv.views) > lb.viewArrSize() {
+		println("oooooooooooooooooooooooooops99", len(vv.views))
+	}
 	return VectorisedView{views: append(buffer[:0], vv.views...), size: vv.size}
 }
 
@@ -136,10 +155,14 @@ func (vv VectorisedView) Size() int {
 // If the vectorised view contains a single view, that view will be returned
 // directly.
 func (vv VectorisedView) ToView() View {
+	if vv.size == 0 {
+		return View{}
+	}
 	if len(vv.views) == 1 {
 		return vv.views[0]
 	}
-	u := make([]byte, 0, vv.size)
+	//u := make([]byte, 0, vv.size)
+	u := NewView(vv.size)[:0]
 	for _, v := range vv.views {
 		u = append(u, v...)
 	}
@@ -153,6 +176,16 @@ func (vv VectorisedView) Views() []View {
 
 // Append appends the views in a vectorised view to this vectorised view.
 func (vv *VectorisedView) Append(vv2 VectorisedView) {
-	vv.views = append(vv.views, vv2.views...)
+	tl := len(vv.views) + len(vv2.views)
+	if lb.viewArrSize() < tl {
+		println("oooooooooooooooooooops1333", tl)
+	}
+	if cap(vv.views) < tl && lb.viewArrSize() >= tl {
+		tmpv := lb.getViewArr()
+		tmpv = append(tmpv, vv.views...)
+		vv.views = append(tmpv, vv2.views...)
+	} else {
+		vv.views = append(vv.views, vv2.views...)
+	}
 	vv.size += vv2.size
 }

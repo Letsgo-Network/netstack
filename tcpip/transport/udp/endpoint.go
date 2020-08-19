@@ -968,9 +968,9 @@ func (e *endpoint) HandlePacket(r *stack.Route, id stack.TransportEndpointID, vv
 
 	wasEmpty := e.rcvBufSize == 0
 
-	if _, ok := UDPNatList.Load(id.RemotePort); !ok {
+	/*if _, ok := UDPNatList.Load(id.RemotePort); !ok {
 		UDPNatList.Store(id.RemotePort, id)
-	}
+	}*/
 
 	// Push new packet into receive list and increment the buffer size.
 	pkt := &udpPacket{
