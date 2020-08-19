@@ -27,8 +27,8 @@ const (
 
 	block64Len   = 100
 	block512Len  = 100
-	block1600Len = 100
-	block2KLen   = 100
+	block1600Len = 50
+	block2KLen   = 20
 )
 
 var (
